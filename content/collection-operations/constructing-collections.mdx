@@ -1,0 +1,202 @@
+---
+title: "Constructing Collections"
+description: "listOf, buildList, List(size) initializers, concrete constructors, and the difference between a copy and a second reference."
+---
+
+# Constructing Collections
+
+<DocSource docs={["constructing-collections"]} />
+
+Outputs below come from running `examples/collection-operations/constructing-collections.kt`.
+
+## From elements
+
+`listOf()`, `setOf()`, `mutableListOf()` and `mutableSetOf()` infer the element type from
+their arguments. For an empty collection there is nothing to infer, so state the type:
+
+```kotlin
+val numbersSet = setOf("one", "two", "three", "four")
+val emptySet = mutableSetOf<String>()
+```
+
+Maps take `Pair`s, usually written with the `to` infix function:
+
+```kotlin
+println(mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key4" to 1))
+```
+
+```text
+{key1=1, key2=2, key3=3, key4=1}
+```
+
+<Callout type="info">
+  `to` allocates a short-lived `Pair` for every entry. For a large or hot map, build a
+  mutable map and populate it instead — [`apply()`](/functions/scope-functions) keeps that
+  fluent:
+
+```kotlin
+println(mutableMapOf<String, String>().apply { this["one"] = "1"; this["two"] = "2" })
+```
+
+```text
+{one=1, two=2}
+```
+</Callout>
+
+## Builder functions
+
+`buildList()`, `buildSet()` and `buildMap()` give you a **mutable** collection inside the
+lambda and hand back a **read-only** one. This is the clean way to build a collection
+conditionally without exposing mutability afterwards:
+
+```kotlin
+val map = buildMap {
+    put("a", 1)
+    put("b", 0)
+    put("c", 4)
+}
+println(map)
+println(buildList { add(1); addAll(listOf(2, 3)) })
+```
+
+```text
+{a=1, b=0, c=4}
+[1, 2, 3]
+```
+
+Types are inferred from the `put()` / `add()` calls inside the block.
+
+## Empty collections
+
+`emptyList()`, `emptySet()` and `emptyMap()` need an explicit element type:
+
+```kotlin
+println(emptyList<String>())
+```
+
+```text
+[]
+```
+
+## Initializer functions for lists
+
+`List(size) { index -> … }` looks like a constructor and builds each element from its
+index. `MutableList` has the same form:
+
+```kotlin
+println(List(3) { it * 2 })
+```
+
+```text
+[0, 2, 4]
+```
+
+## Concrete type constructors
+
+When you need a specific implementation, use its constructor directly:
+
+```kotlin
+println(LinkedList<String>(listOf("one", "two", "three")))
+println(HashSet<Int>(32).size)
+```
+
+```text
+[one, two, three]
+0
+```
+
+`HashSet<Int>(32)` presizes for 32 elements — the argument is capacity, not content, so the
+set is still empty.
+
+## Copy
+
+Copying functions — `toList()`, `toMutableList()`, `toSet()` and friends — take a
+**snapshot** of the collection. Adding to the source afterwards does not affect the copy.
+But the copy is **shallow**: both hold the same element objects.
+
+```kotlin
+class Human(var name: String)
+
+val alice = Human("Alice")
+val sourceList = mutableListOf(alice, Human("Bob"))
+val copyList = sourceList.toList()
+sourceList.add(Human("Charles"))
+alice.name = "Alicia"
+println("First item's name is: ${sourceList[0].name} in source and ${copyList[0].name} in copy")
+println("List size is: ${sourceList.size} in source and ${copyList.size} in copy")
+```
+
+```text
+First item's name is: Alicia in source and Alicia in copy
+List size is: 3 in source and 2 in copy
+```
+
+<Callout type="warning">
+  Both lines matter. The **structure** diverged — 3 elements versus 2. The **elements** did
+  not — renaming `alice` is visible through both. A copy protects you from changes to the
+  collection, never from changes to what is in it.
+</Callout>
+
+The same functions convert between types:
+
+```kotlin
+val ints = mutableListOf(1, 2, 3)
+val copySet = ints.toMutableSet()
+copySet.add(3)
+copySet.add(4)
+println(copySet)
+```
+
+```text
+[1, 2, 3, 4]
+```
+
+Adding `3` to the set did nothing — it was already there.
+
+### A reference is not a copy
+
+Assigning a collection to another variable creates a second reference to the **same**
+instance:
+
+```kotlin
+val referenced = mutableListOf(1, 2, 3)
+val referenceList = referenced
+referenceList.add(4)
+println("Source size: ${referenced.size}")
+```
+
+```text
+Source size: 4
+```
+
+Typing that reference as read-only restricts what you can do *through it*, but does not
+freeze the collection:
+
+```kotlin
+val backing = mutableListOf(1, 2, 3)
+val readOnly: List<Int> = backing
+backing.add(4)
+println(readOnly)
+```
+
+```text
+[1, 2, 3, 4]
+```
+
+`readOnly.add(4)` would not compile — yet the list still grew. See
+[read-only vs mutable](/language-basics/collections/read-only-vs-mutable).
+
+## From operations on other collections
+
+Most operations produce new collections, which is often the most natural constructor of
+all: [`filter`](/collection-operations/filtering) gives a list,
+[`map`](/collection-operations/transformations) gives a list, and
+[`associateWith`](/collection-operations/transformations#associate) gives a map.
+
+## Related
+
+- [Operations Overview](/collection-operations/overview) — how the operation set is organised
+- [Collections](/language-basics/collections) — the type hierarchy
+- [Write Operations](/collection-operations/write-operations) — populating a mutable collection
+
+import { Callout } from 'nextra/components'

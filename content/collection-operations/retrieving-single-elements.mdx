@@ -1,0 +1,202 @@
+---
+title: "Retrieving single elements"
+description: "elementAt, first, last, find, firstOrNull, firstNotNullOf, random and contains — and which of them throw."
+---
+
+# Retrieving single elements
+
+<DocSource docs={["collection-elements"]} />
+
+These functions pull **one** element out of a list or set. The recurring decision is the
+same throughout: the plain name throws when there is nothing to return, and the `OrNull`
+variant hands you `null`.
+
+Outputs below come from running `examples/collection-operations/retrieving-single-elements.kt`.
+
+## Retrieve by position
+
+`elementAt(n)` returns the element at index `n`, counting from `0`.
+
+```kotlin
+val linked = linkedSetOf("one", "two", "three", "four", "five")
+println(linked.elementAt(3))
+
+val sorted = sortedSetOf("one", "two", "three", "four")
+println(sorted.elementAt(0))
+```
+
+```text
+four
+four
+```
+
+Both print `four` for different reasons: the `LinkedHashSet` preserves insertion order, so
+index 3 is `"four"`; the `SortedSet` is in ascending order, where `"four"` sorts first
+alphabetically.
+
+<Callout type="info">
+  A `Set` is not an ordered collection by definition, but Kotlin's `Set` implementations do
+  store elements in *some* order — insertion order for `LinkedHashSet`, natural order for
+  `SortedSet`, or something else entirely. Positional functions still work, but the result
+  is only predictable if you know which implementation you have. On a `List`, prefer the
+  indexed access operator `list[n]`.
+</Callout>
+
+`first()` and `last()` are the readable aliases:
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four", "five")
+println(numbers.first())
+println(numbers.last())
+```
+
+```text
+one
+five
+```
+
+To stay safe at the bounds, use `elementAtOrNull()` or `elementAtOrElse()`:
+
+```kotlin
+println(numbers.elementAtOrNull(5))
+println(numbers.elementAtOrElse(5) { index -> "The value for index $index is undefined" })
+```
+
+```text
+null
+The value for index 5 is undefined
+```
+
+## Retrieve by condition
+
+`first()` and `last()` also accept a predicate:
+
+```kotlin
+val six = listOf("one", "two", "three", "four", "five", "six")
+println(six.first { it.length > 3 })
+println(six.last { it.startsWith("f") })
+```
+
+```text
+three
+five
+```
+
+With no match, both throw. The exception is a `NoSuchElementException`:
+
+```kotlin
+println(runCatching { six.first { it.length > 99 } }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+NoSuchElementException
+```
+
+`firstOrNull()` and `lastOrNull()` return `null` instead:
+
+```kotlin
+println(six.firstOrNull { it.length > 6 })
+```
+
+```text
+null
+```
+
+`find()` and `findLast()` are aliases for `firstOrNull()` and `lastOrNull()` — same
+behaviour, and usually the better name when you are searching rather than indexing:
+
+```kotlin
+val ints = listOf(1, 2, 3, 4)
+println(ints.find { it % 2 == 0 })
+println(ints.findLast { it % 2 == 0 })
+```
+
+```text
+2
+4
+```
+
+## Retrieve with selector
+
+`firstNotNullOf()` maps and searches in one step: it applies the selector and returns the
+first non-null result.
+
+```kotlin
+val mixed = listOf<Any>(0, "true", false)
+println(mixed.firstNotNullOf { item -> item.toString().takeIf { it.length >= 4 } })
+```
+
+```text
+true
+```
+
+`"0"` is too short, `"true"` is the first string of length 4 or more. If nothing qualifies
+it throws `NoSuchElementException`; `firstNotNullOfOrNull()` returns `null` instead.
+
+## Random element
+
+`random()` returns an arbitrary element, optionally from a supplied `Random` source. On an
+empty collection it throws — `randomOrNull()` gives `null`:
+
+```kotlin
+println(emptyList<String>().randomOrNull())
+```
+
+```text
+null
+```
+
+## Check element existence
+
+`contains()` is `true` when some element `equals()` the argument, and reads better in its
+operator form `in`. `containsAll()` takes a collection.
+
+```kotlin
+println(six.contains("four"))
+println("zero" in six)
+println(six.containsAll(listOf("four", "two")))
+println(six.containsAll(listOf("one", "zero")))
+```
+
+```text
+true
+false
+true
+false
+```
+
+`containsAll` requires **every** element to be present, so one miss makes the whole call
+`false`.
+
+```kotlin
+println(six.isEmpty())
+println(six.isNotEmpty())
+
+val empty = emptyList<String>()
+println(empty.isEmpty())
+println(empty.isNotEmpty())
+```
+
+```text
+false
+true
+true
+false
+```
+
+## Throws vs returns null
+
+| Throws | Returns `null` |
+| :--- | :--- |
+| `elementAt()` | `elementAtOrNull()`, `elementAtOrElse()` |
+| `first()`, `last()` | `firstOrNull()` / `find()`, `lastOrNull()` / `findLast()` |
+| `firstNotNullOf()` | `firstNotNullOfOrNull()` |
+| `random()` | `randomOrNull()` |
+
+## Related
+
+- [List-specific operations](/collection-operations/collection-specific-operations/list-operations) — index-based search on lists
+- [Filtering](/collection-operations/filtering) — many elements rather than one
+- [Null Safety](/null-safety) — handling the `null` these return
+
+import { Callout } from 'nextra/components'

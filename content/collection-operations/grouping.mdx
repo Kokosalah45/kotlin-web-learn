@@ -1,0 +1,128 @@
+---
+title: "Grouping"
+description: "groupBy and groupingBy — building a Map of lists, and running fold, reduce or eachCount over every group at once."
+---
+
+# Grouping
+
+<DocSource docs={["collection-grouping"]} />
+
+Grouping turns a flat collection into a `Map` where each key holds **all** the elements
+that produced it. That "all" is the difference from
+[`associateBy()`](/collection-operations/transformations#associate), which keeps only the
+last element per key.
+
+Outputs below come from running `examples/collection-operations/grouping.kt`.
+
+## groupBy
+
+`groupBy()` takes a key selector and returns a `Map<K, List<T>>`:
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four", "five")
+
+val groupedByFirstLetter = numbers.groupBy { it.first().uppercase() }
+println(groupedByFirstLetter)
+```
+
+```text
+{O=[one], T=[two, three], F=[four, five]}
+```
+
+Because the values are lists, iterating gives you the key and the whole group:
+
+```kotlin
+for ((key, value) in groupedByFirstLetter) {
+    println("Key: $key, Values: $value")
+}
+```
+
+```text
+Key: O, Values: [one]
+Key: T, Values: [two, three]
+Key: F, Values: [four, five]
+```
+
+A second lambda transforms the values, so the groups hold something other than the original
+elements:
+
+```kotlin
+val groupedAndTransformed =
+    numbers.groupBy(keySelector = { it.first() }, valueTransform = { it.uppercase() })
+println(groupedAndTransformed)
+```
+
+```text
+{o=[ONE], t=[TWO, THREE], f=[FOUR, FIVE]}
+```
+
+## groupBy vs associateBy
+
+Same input, same key selector, different amount of surviving data:
+
+```kotlin
+println(numbers.groupBy { it.first() })
+println(numbers.associateBy { it.first() })
+```
+
+```text
+{o=[one], t=[two, three], f=[four, five]}
+{o=one, t=three, f=five}
+```
+
+<Callout type="warning">
+  `associateBy()` silently discarded `"two"` and `"four"` — last key wins. Reach for
+  `groupBy()` whenever keys can collide and you care about every element. Use
+  `associateBy()` only when the key is genuinely unique, such as an id.
+</Callout>
+
+## groupingBy
+
+`groupingBy()` does not build the map immediately. It returns a
+[`Grouping`](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-grouping/),
+which applies an operation to every group lazily — the groups are materialised right before
+the operation runs. It supports:
+
+| Operation | Does |
+| :--- | :--- |
+| `eachCount()` | counts the elements in each group |
+| `fold()` | folds each group with an initial value |
+| `reduce()` | reduces each group, no initial value |
+| `aggregate()` | the general form, for when fold and reduce are not enough |
+
+```kotlin
+val grouped = numbers.groupingBy { it.first() }.eachCount()
+for ((key, count) in grouped) {
+    println("Key: $key, Count: $count")
+}
+```
+
+```text
+Key: o, Count: 1
+Key: t, Count: 2
+Key: f, Count: 2
+```
+
+`fold()` runs per group and returns a map of the per-group results — here, the total
+character count of each group:
+
+```kotlin
+val totalLengths = numbers.groupingBy { it.first() }
+    .fold(0) { acc, element -> acc + element.length }
+println(totalLengths)
+```
+
+```text
+{o=3, t=8, f=8}
+```
+
+Reaching the same result through `groupBy()` would build the intermediate lists first and
+then map over them. `groupingBy()` skips that.
+
+## Related
+
+- [Aggregate Operations](/collection-operations/aggregate-operations) — `fold` and `reduce` over a whole collection
+- [Transformations](/collection-operations/transformations#associate) — the `associate*` family
+- [Sequences](/language-basics/sequences) — laziness across a whole chain, not just the grouping step
+
+import { Callout } from 'nextra/components'

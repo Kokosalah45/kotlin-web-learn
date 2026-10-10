@@ -1,0 +1,229 @@
+---
+title: "Comparisons & Comparators"
+description: "The kotlin.comparisons call chain — compareBy, compareValuesBy, compareValues, compareTo — and when to use each."
+---
+
+# Comparisons & Comparators
+
+<DocSource docs={["collection-ordering"]} api={["kotlin-stdlib/kotlin.comparisons/"]} />
+
+Every sort on the JVM ends in the same place: a `compareTo()` call between two objects.
+Everything in `kotlin.comparisons` is scaffolding for getting there.
+
+Outputs below come from running `examples/collection-operations/comparisons-and-comparators.kt`.
+Signatures are quoted from
+[`Comparisons.kt`](https://github.com/JetBrains/kotlin/blob/v2.4.21/libraries/stdlib/src/kotlin/comparisons/Comparisons.kt)
+at tag `v2.4.21`.
+
+## The call chain
+
+```text
+compareBy { it.age }
+      │  returns
+      ▼
+Comparator { a, b -> … }
+      │  calls during sort
+      ▼
+compareValuesBy(a, b, selector)
+      │  extracts values, calls
+      ▼
+compareValues(valA, valB)
+      │  null checks, then
+      ▼
+(valA as Comparable<Any>).compareTo(valB)
+```
+
+Each step is three lines of stdlib. `compareBy` just wraps `compareValuesBy` in a
+`Comparator`:
+
+```kotlin
+@kotlin.internal.InlineOnly
+public inline fun <T> compareBy(crossinline selector: (T) -> Comparable<*>?): Comparator<T> =
+    Comparator { a, b -> compareValuesBy(a, b, selector) }
+```
+
+`compareValuesBy` applies the selector to both sides and delegates:
+
+```kotlin
+@kotlin.internal.InlineOnly
+public inline fun <T> compareValuesBy(a: T, b: T, selector: (T) -> Comparable<*>?): Int {
+    return compareValues(selector(a), selector(b))
+}
+```
+
+`compareValues` adds the null handling and then calls `compareTo`:
+
+```kotlin
+public fun <T : Comparable<*>> compareValues(a: T?, b: T?): Int {
+    if (a == null) return if (b == null) 0 else -1
+    if (b == null) return 1
+
+    @Suppress("UNCHECKED_CAST")
+    return (a as Comparable<Any>).compareTo(b)
+}
+```
+
+So `null` sorts **before** everything by default, and two nulls are equal:
+
+```kotlin
+println(compareValues(1, 2))
+println(compareValues(2, 1))
+println(compareValues(1, 1))
+println(compareValues(null, 1))
+println(compareValues(1, null))
+println(compareValues<Int>(null, null))
+```
+
+```text
+-1
+1
+0
+-1
+1
+0
+```
+
+## The five families
+
+| Family | Functions | Use when |
+| :--- | :--- | :--- |
+| Comparator builders | `compareBy`, `compareByDescending` | you need a `Comparator<T>` to pass to a sort |
+| Chaining | `thenBy`, `thenByDescending`, `thenComparator` | you need tie-breakers |
+| Direct comparison | `compareValues`, `compareValuesBy` | comparing two objects right now, often inside `compareTo` |
+| Null wrappers | `nullsFirst`, `nullsLast` | the type is nullable and you want to choose the side |
+| Predefined | `naturalOrder`, `reverseOrder`, `reversed()` | the default order, or its inverse |
+
+## Implementing Comparable
+
+Inside your own `compareTo()`, the multi-selector `compareValuesBy` does the whole job —
+it compares on each selector in turn and returns at the first difference:
+
+```kotlin
+data class PersonName(val lastName: String, val firstName: String, val age: Int) :
+    Comparable<PersonName> {
+    override fun compareTo(other: PersonName): Int =
+        compareValuesBy(this, other, PersonName::lastName, PersonName::firstName, PersonName::age)
+}
+
+val a = PersonName("Smith", "Ada", 36)
+val b = PersonName("Smith", "Bob", 29)
+println(compareValuesBy(a, b, PersonName::lastName))
+println(compareValuesBy(a, b, PersonName::lastName, PersonName::firstName))
+```
+
+```text
+0
+-1
+```
+
+Same last name gives `0`; adding the first name as a tie-breaker separates them. Note that
+the vararg form `compareValuesBy(a, b, vararg selectors)` is **not** inline and calls
+`require(selectors.size > 0)`, unlike the single-selector overload.
+
+Implementing `Comparable` is what gives a type the comparison operators and the plain
+`sorted()`:
+
+```kotlin
+println(a < b)
+println(listOf(b, a).sorted())
+```
+
+```text
+true
+[PersonName(lastName=Smith, firstName=Ada, age=36), PersonName(lastName=Smith, firstName=Bob, age=29)]
+```
+
+## Building comparators for a sort
+
+```kotlin
+data class Employee(val name: String, val age: Int, val salary: Double)
+
+val employees = listOf(
+    Employee("Ada", 36, 120.0),
+    Employee("Bob", 36, 95.0),
+    Employee("Cy", 29, 95.0)
+)
+println(employees.sortedWith(compareBy<Employee> { it.age }.thenByDescending { it.salary }))
+```
+
+```text
+[Employee(name=Cy, age=29, salary=95.0), Employee(name=Ada, age=36, salary=120.0), Employee(name=Bob, age=36, salary=95.0)]
+```
+
+`compareBy` also takes a vararg of selectors, which is shorter when every level is
+ascending:
+
+```kotlin
+println(employees.sortedWith(compareBy({ it.age }, { it.name })))
+```
+
+```text
+[Employee(name=Cy, age=29, salary=95.0), Employee(name=Ada, age=36, salary=120.0), Employee(name=Bob, age=36, salary=95.0)]
+```
+
+## Predefined orders
+
+```kotlin
+println(listOf("b", "a", "c").sortedWith(naturalOrder()))
+println(listOf("b", "a", "c").sortedWith(reverseOrder()))
+println(listOf("b", "a", "c").sortedWith(naturalOrder<String>().reversed()))
+```
+
+```text
+[a, b, c]
+[c, b, a]
+[c, b, a]
+```
+
+## Nulls
+
+`compareValues` already puts nulls first. To choose explicitly, wrap a comparator:
+
+```kotlin
+val dates = listOf(LocalDate.of(2026, 3, 1), null, LocalDate.of(2025, 12, 31))
+println(dates.sortedWith(nullsFirst(naturalOrder())))
+println(dates.sortedWith(nullsLast(naturalOrder())))
+```
+
+```text
+[null, 2025-12-31, 2026-03-01]
+[2025-12-31, 2026-03-01, null]
+```
+
+## Do not subtract to compare
+
+A comparator written as `x - y` is a common shortcut and it is broken at the extremes:
+
+```kotlin
+val naive = Comparator { x: Int, y: Int -> x - y }
+println(naive.compare(Int.MIN_VALUE, 1))
+println(compareValues(Int.MIN_VALUE, 1))
+```
+
+```text
+2147483647
+-1
+```
+
+<Callout type="warning">
+  `Int.MIN_VALUE - 1` overflows to a large **positive** number, so the comparator claims
+  `MIN_VALUE` is greater than `1`. A sort built on it produces silently wrong order. Use
+  `compareBy { }`, `compareValues()`, or `x.compareTo(y)` — never subtraction.
+</Callout>
+
+## Which one do I want
+
+| Goal | Reach for |
+| :--- | :--- |
+| Sort a collection | `sortedBy { }` or `sortedWith(compareBy { })` |
+| Compare two non-null values | `a < b`, or `a.compareTo(b)` |
+| Compare two nullable values | `compareValues(a, b)` |
+| Implement `compareTo` on your class | `compareValuesBy(this, other, …)` |
+
+## Related
+
+- [Ordering](/collection-operations/ordering) — the sorting functions these feed
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — `==` is unrelated to `compareTo`
+- [Aggregate Operations](/collection-operations/aggregate-operations) — `minWith` / `maxWith`
+
+import { Callout } from 'nextra/components'

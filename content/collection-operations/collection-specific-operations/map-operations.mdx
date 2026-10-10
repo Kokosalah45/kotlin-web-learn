@@ -1,0 +1,269 @@
+---
+title: "Maps"
+description: "Key lookup and its four fallbacks, filterKeys/filterValues, plus and minus on maps, and the write operations including getOrPut."
+---
+
+# Map-specific Operations
+
+<DocSource docs={["map-operations"]} api={["kotlin-stdlib/kotlin.collections/-map/"]} />
+
+A map is addressed by key, which gives it a lookup API with several fallback strategies and
+the ability to filter keys and values independently.
+
+Outputs below come from running `examples/collection-operations/map-operations.kt`.
+
+## Retrieve keys and values
+
+`get(key)` — or `[key]` — returns `null` when the key is absent. `getValue()` throws
+instead.
+
+```kotlin
+val numbersMap = mapOf("one" to 1, "two" to 2, "three" to 3)
+println(numbersMap.get("one"))
+println(numbersMap["one"])
+println(numbersMap.getOrDefault("four", 10))
+println(numbersMap["five"])
+println(numbersMap.getOrElse("five") { -1 })
+println(runCatching { numbersMap.getValue("six") }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+1
+1
+10
+null
+-1
+NoSuchElementException
+```
+
+| Function | Missing key gives |
+| :--- | :--- |
+| `map[key]` / `get()` | `null` |
+| `getValue()` | throws `NoSuchElementException` |
+| `getOrDefault(key, default)` | the default value |
+| `getOrElse(key) { }` | the lambda's result |
+
+### Missing vs present-but-null
+
+With nullable values, `null` from `map[key]` is ambiguous — it could mean "absent" or
+"present and null". Two functions disambiguate:
+
+```kotlin
+val nullableMap = mapOf("one" to 1, "two" to null)
+println(nullableMap["two"])
+println(nullableMap["nope"])
+println(nullableMap.getOrElseIfNull("two") { 0 })
+println(nullableMap.getOrElseIfMissing("two") { 0 })
+```
+
+```text
+null
+null
+0
+null
+```
+
+The first two lines are indistinguishable. `getOrElseIfNull` treats a `null` value as
+absent and substitutes `0`; `getOrElseIfMissing` only substitutes when the key is genuinely
+not there, so it returns the stored `null`.
+
+<Callout type="info">
+  These are marked
+  [Experimental](https://kotlinlang.org/docs/components-stability.html) and need
+  `@OptIn(ExperimentalStdlibApi::class)`. Verified present in Kotlin 2.4.21.
+</Callout>
+
+`keys` is a `Set` of the keys; `values` is a collection of the values:
+
+```kotlin
+println(numbersMap.keys)
+println(numbersMap.values)
+```
+
+```text
+[one, two, three]
+[1, 2, 3]
+```
+
+## Filter
+
+`filter()` on a map gives the predicate the whole entry, which destructures neatly.
+`filterKeys()` and `filterValues()` narrow to one side:
+
+```kotlin
+val keyed = mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key11" to 11)
+println(keyed.filter { (key, value) -> key.endsWith("1") && value > 10 })
+println(keyed.filterKeys { it.endsWith("1") })
+println(keyed.filterValues { it < 10 })
+```
+
+```text
+{key11=11}
+{key1=1, key11=11}
+{key1=1, key2=2, key3=3}
+```
+
+## Plus and minus
+
+`plus` and `minus` are asymmetric on maps because of key access. `+` takes a `Pair` or
+another `Map`, and **the right-hand side wins** on key conflicts:
+
+```kotlin
+println(numbersMap + Pair("four", 4))
+println(numbersMap + Pair("one", 10))
+println(numbersMap + mapOf("five" to 5, "one" to 11))
+```
+
+```text
+{one=1, two=2, three=3, four=4}
+{one=10, two=2, three=3}
+{one=11, two=2, three=3, five=5}
+```
+
+Note `one` stays in its original position while taking the new value.
+
+`-` takes **keys**, not entries — a single key or a collection of them:
+
+```kotlin
+println(numbersMap - "one")
+println(numbersMap - listOf("two", "four"))
+```
+
+```text
+{two=2, three=3}
+{one=1, three=3}
+```
+
+## Write operations
+
+Two rules govern map writes: values can be updated but **keys never change** once an entry
+exists, and each key has exactly one value.
+
+`put()` adds or overwrites and returns the previous value; `putAll()` takes a map or any
+group of pairs:
+
+```kotlin
+val putting = mutableMapOf("one" to 1, "two" to 2)
+putting.put("three", 3)
+println(putting)
+putting.putAll(setOf("four" to 4, "five" to 5))
+println(putting)
+
+val updating = mutableMapOf("one" to 1, "two" to 2)
+val previousValue = updating.put("one", 11)
+println("value associated with 'one', before: $previousValue, after: ${updating["one"]}")
+```
+
+```text
+{one=1, two=2, three=3}
+{one=1, two=2, three=3, four=4, five=5}
+value associated with 'one', before: 1, after: 11
+```
+
+New entries in a `LinkedHashMap` (the default) go last in iteration order.
+
+`[] =` and `+=` are the operator forms:
+
+```kotlin
+val operators = mutableMapOf("one" to 1, "two" to 2)
+operators["three"] = 3
+operators += mapOf("four" to 4, "five" to 5)
+println(operators)
+```
+
+```text
+{one=1, two=2, three=3, four=4, five=5}
+```
+
+### getOrPut
+
+`getOrPut()` returns the existing value, or stores and returns the default. It is the
+idiomatic way to write a frequency counter:
+
+```kotlin
+val counts = mutableMapOf<String, Int>()
+for (word in listOf("a", "b", "a", "c", "a")) {
+    counts[word] = counts.getOrPut(word) { 0 } + 1
+}
+println(counts)
+```
+
+```text
+{a=3, b=1, c=1}
+```
+
+With nullable values, the same missing-vs-null distinction applies:
+
+```kotlin
+val mapForNull = mutableMapOf<String, Int?>("one" to null)
+val mapForMissing = mutableMapOf<String, Int?>("one" to null)
+
+mapForNull.getOrPutIfNull("one") { 1 }
+println(mapForNull)
+
+mapForMissing.getOrPutIfMissing("one") { 1 }
+println(mapForMissing)
+```
+
+```text
+{one=1}
+{one=null}
+```
+
+### Remove entries
+
+`remove(key)` removes by key. Given a key *and* a value, it removes only if both match:
+
+```kotlin
+val removing = mutableMapOf("one" to 1, "two" to 2, "three" to 3)
+removing.remove("one")
+println(removing)
+removing.remove("three", 4)
+println(removing)
+```
+
+```text
+{two=2, three=3}
+{two=2, three=3}
+```
+
+`"three"` survived because its value is `3`, not `4`.
+
+You can also remove through the `keys` and `values` views. Removing by value removes only
+the **first** matching entry:
+
+```kotlin
+val viaViews = mutableMapOf("one" to 1, "two" to 2, "three" to 3, "threeAgain" to 3)
+viaViews.keys.remove("one")
+println(viaViews)
+viaViews.values.remove(3)
+println(viaViews)
+```
+
+```text
+{two=2, three=3, threeAgain=3}
+{two=2, threeAgain=3}
+```
+
+`-=` removes by key, and a key that is not present is simply ignored:
+
+```kotlin
+val minusing = mutableMapOf("one" to 1, "two" to 2, "three" to 3)
+minusing -= "two"
+println(minusing)
+minusing -= "five"
+println(minusing)
+```
+
+```text
+{one=1, three=3}
+{one=1, three=3}
+```
+
+## Related
+
+- [Transformations](/collection-operations/transformations#associate) — building maps with `associate*`
+- [Grouping](/collection-operations/grouping) — building a `Map<K, List<V>>`
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — why mutable keys break lookup
+
+import { Callout } from 'nextra/components'

@@ -1,0 +1,194 @@
+---
+title: "Retrieving Collection Parts"
+description: "slice, take, drop, takeWhile, chunked, windowed and zipWithNext — selecting sub-collections by position, count or predicate."
+---
+
+# Retrieving Collection Parts
+
+<DocSource docs={["collection-parts"]} />
+
+These functions select a *part* of a collection: by explicit indices, by a count, by a
+predicate, or by splitting into blocks. All return new collections.
+
+Outputs below come from running `examples/collection-operations/retrieving-collection-parts.kt`.
+
+## Slice
+
+`slice()` returns the elements at the given indices. The indices can be a
+[range](/language-basics/ranges), a stepped progression, or any collection of `Int`:
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four", "five", "six")
+println(numbers.slice(1..3))
+println(numbers.slice(0..4 step 2))
+println(numbers.slice(setOf(3, 5, 0)))
+```
+
+```text
+[two, three, four]
+[one, three, five]
+[four, six, one]
+```
+
+The last line is worth a second look: the result follows the **order of the indices you
+asked for**, not the order of the original list.
+
+## Take and drop
+
+`take(n)` keeps the first `n`, `takeLast(n)` the last `n`. `drop(n)` and `dropLast(n)` are
+the complements.
+
+```kotlin
+println(numbers.take(3))
+println(numbers.takeLast(3))
+println(numbers.drop(1))
+println(numbers.dropLast(5))
+```
+
+```text
+[one, two, three]
+[four, five, six]
+[two, three, four, five, six]
+[one]
+```
+
+Asking for more than exists is not an error — `take` returns everything and `drop` returns
+nothing:
+
+```kotlin
+println(numbers.take(100))
+println(numbers.drop(100))
+```
+
+```text
+[one, two, three, four, five, six]
+[]
+```
+
+### Predicate variants
+
+Four predicate-driven versions mirror the counted ones:
+
+| Function | Returns |
+| :--- | :--- |
+| `takeWhile { }` | elements up to, excluding, the first mismatch |
+| `takeLastWhile { }` | the matching run at the **end** of the collection |
+| `dropWhile { }` | from the first mismatch to the end |
+| `dropLastWhile { }` | from the start to the last mismatch |
+
+```kotlin
+println(numbers.takeWhile { !it.startsWith('f') })
+println(numbers.takeLastWhile { it != "three" })
+println(numbers.dropWhile { it.length == 3 })
+println(numbers.dropLastWhile { it.contains('i') })
+```
+
+```text
+[one, two, three]
+[four, five, six]
+[three, four, five, six]
+[one, two, three, four]
+```
+
+<Callout type="info">
+  `takeWhile` is not `filter`. It **stops** at the first element that fails the predicate;
+  `filter` examines every element.
+
+```kotlin
+println(numbers.takeWhile { it.length == 3 })
+println(numbers.filter { it.length == 3 })
+```
+
+```text
+[one, two]
+[one, two, six]
+```
+
+  `"six"` is three characters long, but `takeWhile` had already stopped at `"three"`.
+</Callout>
+
+## Chunked
+
+`chunked(size)` splits the collection into consecutive, non-overlapping blocks. The last
+block may be shorter.
+
+```kotlin
+val upTo13 = (0..13).toList()
+println(upTo13.chunked(3))
+```
+
+```text
+[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13]]
+```
+
+A trailing lambda transforms each chunk as it is produced:
+
+```kotlin
+println(upTo13.chunked(3) { it.sum() })
+```
+
+```text
+[3, 12, 21, 30, 25]
+```
+
+<Callout type="warning">
+  When `chunked()` is called with a transformation, the chunks are short-lived lists meant
+  to be consumed inside the lambda. Do not stash one away and read it later.
+</Callout>
+
+## Windowed
+
+`windowed(size)` is the sliding-window counterpart: unlike `chunked()`, windows start at
+**every** element and overlap.
+
+```kotlin
+val words = listOf("one", "two", "three", "four", "five")
+println(words.windowed(3))
+```
+
+```text
+[[one, two, three], [two, three, four], [three, four, five]]
+```
+
+`step` sets the distance between window starts (default `1`); `partialWindows` keeps the
+short windows at the tail that would otherwise be dropped:
+
+```kotlin
+val upTo10 = (1..10).toList()
+println(upTo10.windowed(3, step = 2, partialWindows = true))
+println(upTo10.windowed(3) { it.sum() })
+```
+
+```text
+[[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9], [9, 10]]
+[6, 9, 12, 15, 18, 21, 24, 27]
+```
+
+## zipWithNext
+
+For two-element windows specifically, `zipWithNext()` pairs each element with the one after
+it — one pair per element except the last:
+
+```kotlin
+println(words.zipWithNext())
+println(words.zipWithNext { s1, s2 -> s1.length > s2.length })
+```
+
+```text
+[(one, two), (two, three), (three, four), (four, five)]
+[false, false, true, false]
+```
+
+<Callout type="info">
+  It does not cut the collection into pairs. On `[1, 2, 3, 4]` the result is
+  `[(1, 2), (2, 3), (3, 4)]` — not `[(1, 2), (3, 4)]`. For the non-overlapping version use
+  `chunked(2)`.
+</Callout>
+
+## Related
+
+- [Retrieving single elements](/collection-operations/retrieving-single-elements) — one element rather than a part
+- [Filtering](/collection-operations/filtering) — selecting by predicate without positional meaning
+- [Ranges](/language-basics/ranges) — building the index ranges `slice()` takes
+
+import { Callout } from 'nextra/components'

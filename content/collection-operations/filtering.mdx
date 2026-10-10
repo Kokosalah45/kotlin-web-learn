@@ -1,0 +1,155 @@
+---
+title: "Filtering"
+description: "filter, filterNot, filterIsInstance, filterNotNull, partition, and the any/all/none predicate tests."
+---
+
+# Filtering
+
+<DocSource docs={["collection-filtering"]} />
+
+Filtering conditions are **predicates** — lambdas that take an element and return a
+`Boolean`. Every filtering function leaves the original collection untouched and returns a
+new one, so they work equally on read-only and mutable collections. That also means the
+result is worth nothing unless you assign it or chain onto it.
+
+Outputs below come from running `examples/collection-operations/filtering.kt`.
+
+## Filter by predicate
+
+`filter()` keeps the elements matching the predicate. For `List` and `Set` the result is a
+`List`; for a `Map` it stays a `Map`.
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four")
+println(numbers.filter { it.length > 3 })
+
+val numbersMap = mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key11" to 11)
+println(numbersMap.filter { (key, value) -> key.endsWith("1") && value > 10 })
+```
+
+```text
+[three, four]
+{key11=11}
+```
+
+Filtering a map destructures the entry into `(key, value)`, which reads much better than
+`it.key` / `it.value`.
+
+`filterIndexed()` gives the predicate the index as well; `filterNot()` is the negation:
+
+```kotlin
+println(numbers.filterIndexed { index, s -> (index != 0) && (s.length < 5) })
+println(numbers.filterNot { it.length <= 3 })
+```
+
+```text
+[two, four]
+[three, four]
+```
+
+## Filtering by type
+
+Two functions filter and narrow the static type at once, which is what makes them worth
+using over a plain `filter`:
+
+`filterIsInstance<T>()` on a `List<Any>` returns a `List<T>`, so `T`'s members become
+available with no cast:
+
+```kotlin
+val mixed = listOf(null, 1, "two", 3.0, "four")
+mixed.filterIsInstance<String>().forEach { println(it.uppercase()) }
+```
+
+```text
+TWO
+FOUR
+```
+
+`filterNotNull()` on a `List<T?>` returns a `List<T & Any>`, so the elements stop being
+nullable:
+
+```kotlin
+val withNulls = listOf(null, "one", "two", null)
+withNulls.filterNotNull().forEach { println(it.length) }
+```
+
+```text
+3
+3
+```
+
+Without `filterNotNull()`, `it.length` would not compile — `length` is unavailable on a
+nullable `String?`.
+
+## Partition
+
+`partition()` splits in one pass instead of filtering twice. It returns a
+`Pair<List<T>, List<T>>`: matches first, everything else second.
+
+```kotlin
+val (match, rest) = numbers.partition { it.length > 3 }
+println(match)
+println(rest)
+```
+
+```text
+[three, four]
+[one, two]
+```
+
+## Test predicates
+
+These return a `Boolean` rather than a collection:
+
+| Function | `true` when |
+| :--- | :--- |
+| `any { }` | at least one element matches |
+| `none { }` | no element matches |
+| `all { }` | every element matches |
+
+```kotlin
+println(numbers.any { it.endsWith("e") })
+println(numbers.none { it.endsWith("a") })
+println(numbers.all { it.endsWith("e") })
+println(emptyList<Int>().all { it > 5 })
+```
+
+```text
+true
+true
+false
+true
+```
+
+<Callout type="warning">
+  That last line is not a bug. `all()` returns `true` for **any** predicate on an empty
+  collection — logicians call it
+  [vacuous truth](https://en.wikipedia.org/wiki/Vacuous_truth). If an empty collection
+  should not pass your check, test for emptiness separately.
+</Callout>
+
+Called with no predicate, `any()` and `none()` just ask whether the collection has
+elements:
+
+```kotlin
+val empty = emptyList<String>()
+println(numbers.any())
+println(empty.any())
+println(numbers.none())
+println(empty.none())
+```
+
+```text
+true
+false
+false
+true
+```
+
+## Related
+
+- [Transformations](/collection-operations/transformations) — reshaping rather than selecting
+- [Retrieving single elements](/collection-operations/retrieving-single-elements) — `find`, `first`, `singleOrNull`
+- [Sequences](/language-basics/sequences) — avoid materialising intermediate lists in a long chain
+
+import { Callout } from 'nextra/components'

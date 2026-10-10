@@ -1,0 +1,30 @@
+{
+  "name": "kotlin-learn-web",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "next dev --webpack --port 3111",
+    "build": "next build --webpack",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "content:fetch": "node scripts/fetch-docs.mjs",
+    "content:verify": "node scripts/verify-links.mjs",
+    "examples:run": "node scripts/run-examples.mjs",
+    "content:scaffold": "node scripts/scaffold.mjs"
+  },
+  "dependencies": {
+    "next": "16.3.5",
+    "nextra": "^4.6.1",
+    "nextra-theme-docs": "^4.6.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/mdx": "2.0.14",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,123 @@
+---
+title: "Operations Overview"
+description: "How collection operations are organised: member vs extension functions, non-mutating results, destination (*To) functions, and the in-place/copying naming rule."
+---
+
+# Operations Overview
+
+<DocSource docs={["collection-operations"]} />
+
+Before the individual operations, it helps to know how the whole set is organised — the
+same three rules explain most of the API surface.
+
+Outputs below come from running `examples/collection-operations/overview.kt`.
+
+## Member vs extension functions
+
+Operations arrive two ways:
+
+- **Member functions** on the collection interfaces — the operations essential to being
+  that type. `Collection` has `isEmpty()`, `List` has `get()`. Implementing a collection
+  interface means implementing these.
+- **Extension functions** — everything else: filtering, transformation, ordering, grouping.
+  These are not part of the interface, which is why they work uniformly across all
+  implementations.
+
+If you write your own collection, the standard library's skeletal classes
+(`AbstractCollection`, `AbstractList`, `AbstractSet`, `AbstractMap`, and their mutable
+counterparts) supply most of the member functions for you.
+
+## Common operations return new collections
+
+Everything in this section works on read-only and mutable collections alike, and none of it
+changes the receiver. The result is the only thing that carries the work — drop it and
+nothing happened:
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four")
+numbers.filter { it.length > 3 }
+println("numbers are still $numbers")
+
+val longerThan3 = numbers.filter { it.length > 3 }
+println("numbers longer than 3 chars are $longerThan3")
+```
+
+```text
+numbers are still [one, two, three, four]
+numbers longer than 3 chars are [three, four]
+```
+
+The groups are: [Transformations](/collection-operations/transformations),
+[Filtering](/collection-operations/filtering),
+[plus & minus](/collection-operations/plus-and-minus-operators),
+[Grouping](/collection-operations/grouping),
+[Retrieving parts](/collection-operations/retrieving-collection-parts),
+[Retrieving single elements](/collection-operations/retrieving-single-elements),
+[Ordering](/collection-operations/ordering) and
+[Aggregate operations](/collection-operations/aggregate-operations).
+
+## Destination functions
+
+Many operations have a `*To` variant that **appends** into a mutable collection you supply
+instead of allocating a new one — `filterTo()` for `filter()`, `associateTo()` for
+`associate()`, and so on. Because they append, several calls accumulate:
+
+```kotlin
+val filterResults = mutableListOf<String>()
+numbers.filterTo(filterResults) { it.length > 3 }
+numbers.filterIndexedTo(filterResults) { index, _ -> index == 0 }
+println(filterResults)
+```
+
+```text
+[three, four, one]
+```
+
+They return the destination, so it can be constructed inline. Choosing the destination type
+changes the result — mapping into a `HashSet` deduplicates on the way:
+
+```kotlin
+val result = numbers.mapTo(HashSet()) { it.length }
+println("distinct item lengths are $result")
+```
+
+```text
+distinct item lengths are [3, 4, 5]
+```
+
+Four strings went in; three lengths came out, because `"one"` and `"two"` are both 3.
+
+## In place or a copy
+
+Mutable collections additionally get **write operations** that change their state — see
+[Write Operations](/collection-operations/write-operations).
+
+Several operations come as a pair, and the name tells you which is which:
+
+```kotlin
+val mutable = mutableListOf("one", "two", "three", "four")
+val sortedNumbers = mutable.sorted()
+println(mutable == sortedNumbers)
+mutable.sort()
+println(mutable == sortedNumbers)
+```
+
+```text
+false
+true
+```
+
+<Callout type="info">
+  **Past participle** (`sorted`, `reversed`, `shuffled`) returns a new collection and leaves
+  the receiver alone. **Imperative verb** (`sort`, `reverse`, `shuffle`) mutates in place
+  and exists only on mutable types. This rule holds across the whole library, so you can
+  usually tell what a call does before looking it up.
+</Callout>
+
+## Related
+
+- [Constructing Collections](/collection-operations/constructing-collections) — making one in the first place
+- [Write Operations](/collection-operations/write-operations) — the mutating half
+- [Collections](/language-basics/collections) — the type hierarchy these operate on
+
+import { Callout } from 'nextra/components'

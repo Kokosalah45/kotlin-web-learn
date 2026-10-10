@@ -1,0 +1,37 @@
+---
+title: "Collection-specific Operations"
+description: "Operations that exist only on List, Set or Map, beyond the common ones every collection shares."
+---
+
+# Collection-specific Operations
+
+<DocSource docs={["list-operations", "set-operations", "map-operations"]} />
+
+Everything under [Collection Operations](/collection-operations/overview) works on any
+collection. Each concrete type then adds operations that only make sense for its shape.
+
+| Type | What it adds | Why |
+| :--- | :--- | :--- |
+| [List](/collection-operations/collection-specific-operations/list-operations) | index access, `subList`, `indexOf`, `binarySearch`, in-place `sort` | elements have positions |
+| [Set](/collection-operations/collection-specific-operations/set-operations) | `union`, `intersect`, `subtract` | elements are unique, so set algebra applies |
+| [Map](/collection-operations/collection-specific-operations/map-operations) | key lookup, `filterKeys`/`filterValues`, `getOrPut`, `put`/`remove` | entries are addressed by key |
+
+These three pages correspond to the *Collection-specific Operations* box drawn on the
+roadmap.
+
+## The shared idea
+
+In every case the extra operations come from one property of the type:
+
+- A **list** is ordered, so "the element at 3", "the index of x" and "sort this in place"
+  all have meaning.
+- A **set** holds no duplicates, so merging, intersecting and subtracting behave like
+  mathematical sets. Applying them to a list is allowed, but the result is always a `Set`.
+- A **map** is keyed, so you can filter keys and values independently and update a value
+  without touching the key — keys themselves never change once an entry exists.
+
+## Related
+
+- [Collections](/language-basics/collections) — the type hierarchy
+- [Operations Overview](/collection-operations/overview) — the common operations
+- [Write Operations](/collection-operations/write-operations) — mutation shared by all mutable collections

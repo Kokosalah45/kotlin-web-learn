@@ -1,0 +1,213 @@
+---
+title: "Aggregate Operations"
+description: "count, sum, average, min/max and their By/With/Of variants, plus fold, reduce and the running* accumulators."
+---
+
+# Aggregate Operations
+
+<DocSource docs={["collection-aggregate"]} />
+
+Aggregate operations reduce a whole collection to a single value.
+
+Outputs below come from running `examples/collection-operations/aggregate-operations.kt`.
+
+## The basics
+
+```kotlin
+val numbers = listOf(6, 42, 10, 4)
+
+println("Count: ${numbers.count()}")
+println("Max: ${numbers.maxOrNull()}")
+println("Min: ${numbers.minOrNull()}")
+println("Average: ${numbers.average()}")
+println("Sum: ${numbers.sum()}")
+```
+
+```text
+Count: 4
+Max: 42
+Min: 4
+Average: 15.5
+Sum: 62
+```
+
+Empty collections do **not** all behave the same way, and the differences are easy to get
+caught by:
+
+```kotlin
+val empty = emptyList<Int>()
+println("maxOrNull: ${empty.maxOrNull()}")
+println("sum: ${empty.sum()}")
+println("average: ${empty.average()}")
+println("count: ${empty.count()}")
+```
+
+```text
+maxOrNull: null
+sum: 0
+average: NaN
+count: 0
+```
+
+<Callout type="warning">
+  `average()` on an empty collection is `NaN`, not `0.0` and not `null`. `NaN` propagates
+  silently through later arithmetic and is never equal to itself, so guard with
+  `isNotEmpty()` before averaging.
+</Callout>
+
+## By, With, and Of
+
+Three suffixes decide what the selector means and what comes back:
+
+| Suffix | Takes | Returns |
+| :--- | :--- | :--- |
+| `minByOrNull` / `maxByOrNull` | a selector | the **element** with the smallest/largest selector value |
+| `minWithOrNull` / `maxWithOrNull` | a `Comparator` | the **element**, ordered by that comparator |
+| `minOfOrNull` / `maxOfOrNull` | a selector | the smallest/largest **selector value** itself |
+| `minOfWithOrNull` / `maxOfWithOrNull` | a `Comparator` | the selector value, ordered by that comparator |
+
+```kotlin
+val five = listOf(5, 42, 10, 4)
+println(five.minByOrNull { it % 3 })
+val strings = listOf("one", "two", "three", "four")
+println(strings.maxWithOrNull(compareBy { it.length }))
+```
+
+```text
+42
+three
+```
+
+`42 % 3` is `0`, the smallest remainder, so `minByOrNull` returns the element `42`.
+Switching to `minOfOrNull` returns the remainder instead:
+
+```kotlin
+println(five.minByOrNull { it % 3 })
+println(five.minOfOrNull { it % 3 })
+```
+
+```text
+42
+0
+```
+
+All the `*OrNull` forms return `null` on an empty collection. The versions without the
+suffix — `maxOf`, `minOf`, `maxOfWith`, `minOfWith` — throw `NoSuchElementException`
+instead.
+
+## sumOf
+
+`sumOf()` sums the results of a selector, which can return `Int`, `Long`, `Double`, `UInt`,
+`ULong`, and on the JVM `BigInteger` and `BigDecimal`:
+
+```kotlin
+println(five.sumOf { it * 2 })
+println(five.sumOf { it.toDouble() / 2 })
+```
+
+```text
+122
+30.5
+```
+
+The return type follows the selector, so the first is an `Int` and the second a `Double`.
+
+## Fold and reduce
+
+Both walk the collection accumulating a result. The difference is the starting point:
+
+- `reduce()` starts with the **first two elements**.
+- `fold()` starts with an **initial value** you supply.
+
+```kotlin
+val four = listOf(5, 2, 10, 4)
+
+println(four.reduce { sum, element -> sum + element })
+println(four.fold(0) { sum, element -> sum + element * 2 })
+println(four.reduce { sum, element -> sum + element * 2 })
+```
+
+```text
+21
+42
+37
+```
+
+<Callout type="warning">
+  The third line is the classic trap. `fold(0)` doubles every element and gives `42`. The
+  same lambda in `reduce()` gives `37`, because the first element is used as the starting
+  accumulator and is therefore **never doubled**. When your operation is not a plain
+  combination of two equals, you want `fold()`.
+</Callout>
+
+`foldRight()` and `reduceRight()` run from the last element backwards. Note the operation's
+parameters swap: the element comes first, the accumulator second.
+
+```kotlin
+println(four.foldRight(0) { element, sum -> sum + element * 2 })
+```
+
+```text
+42
+```
+
+`foldIndexed()` and `reduceIndexed()` pass the index as the first argument (and
+`foldRightIndexed()` / `reduceRightIndexed()` do the same from the right):
+
+```kotlin
+println(four.foldIndexed(0) { idx, sum, element -> if (idx % 2 == 0) sum + element else sum })
+println(four.foldRightIndexed(0) { idx, element, sum -> if (idx % 2 == 0) sum + element else sum })
+```
+
+```text
+15
+15
+```
+
+### Empty collections
+
+`reduce` has nothing to start from, so it throws:
+
+```kotlin
+println(runCatching { empty.reduce { a, b -> a + b } }.exceptionOrNull()?.let { it::class.simpleName })
+println(empty.reduceOrNull { a, b -> a + b })
+println(empty.fold(0) { a, b -> a + b })
+```
+
+```text
+UnsupportedOperationException
+null
+0
+```
+
+Three options: `reduce` throws `UnsupportedOperationException`, `reduceOrNull` gives `null`,
+and `fold` simply returns its initial value — which is often the cleanest answer.
+`reduceRightOrNull()`, `reduceIndexedOrNull()` and `reduceRightIndexedOrNull()` round out
+the null-returning set.
+
+## Keeping the intermediate steps
+
+`runningReduce()` and `runningFold()` (also called `scan()`) return every intermediate
+accumulator rather than just the final one:
+
+```kotlin
+val sequence = listOf(0, 1, 2, 3, 4, 5)
+println(sequence.runningReduce { sum, item -> sum + item })
+println(sequence.runningFold(10) { sum, item -> sum + item })
+```
+
+```text
+[0, 1, 3, 6, 10, 15]
+[10, 10, 11, 13, 16, 20, 25]
+```
+
+`runningFold` emits the initial value first, so its result is one element longer than the
+input. `runningFoldIndexed()` and `runningReduceIndexed()` add the index.
+
+## Related
+
+- [Grouping](/collection-operations/grouping) — `fold` and `reduce` applied per group
+- [Ordering](/collection-operations/ordering) — the comparators `minWith` / `maxWith` take
+- [Filtering](/collection-operations/filtering) — `count { }` also accepts a predicate
+
+import { Callout } from 'nextra/components'

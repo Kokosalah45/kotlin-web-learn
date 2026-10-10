@@ -1,0 +1,97 @@
+---
+title: "Sets"
+description: "union, intersect and subtract — set algebra in the standard library, and why calling it on a list returns a Set."
+---
+
+# Set-specific Operations
+
+<DocSource docs={["set-operations"]} api={["kotlin-stdlib/kotlin.collections/-set/"]} />
+
+Three functions implement set algebra. All read well in infix form.
+
+Outputs below come from running `examples/collection-operations/set-operations.kt`.
+
+## union
+
+`union()` merges two collections. For ordered collections the **operand order shows in the
+result** — the left operand's elements come first:
+
+```kotlin
+val numbers = setOf("one", "two", "three")
+println(numbers union setOf("four", "five"))
+println(setOf("four", "five") union numbers)
+```
+
+```text
+[one, two, three, four, five]
+[four, five, one, two, three]
+```
+
+Same set mathematically, different iteration order.
+
+## intersect and subtract
+
+`intersect()` keeps what is in both; `subtract()` keeps what is in the left but not the
+right:
+
+```kotlin
+println(numbers intersect setOf("two", "one"))
+println(numbers subtract setOf("three", "four"))
+println(numbers subtract setOf("four", "three"))
+```
+
+```text
+[one, two]
+[one, two]
+[one, two]
+```
+
+The last two lines show that the *argument's* order does not matter — only the receiver's
+does.
+
+## Symmetric difference
+
+There is no dedicated function. Combine two subtractions with a union to get the elements
+in one collection or the other but not both:
+
+```kotlin
+val numbers2 = setOf("three", "four")
+println((numbers - numbers2) union (numbers2 - numbers))
+```
+
+```text
+[one, two, four]
+```
+
+## On lists
+
+These functions work on lists too — but the result is **always** a `Set`. Duplicates
+collapse and index access is gone:
+
+```kotlin
+val list1 = listOf(1, 1, 2, 3, 5, 8, -1)
+val list2 = listOf(1, 1, 2, 2, 3, 5)
+println(list1 intersect list2)
+println(list1 union list2)
+println((list1 union list2)::class.simpleName)
+```
+
+```text
+[1, 2, 3, 5]
+[1, 2, 3, 5, 8, -1]
+LinkedHashSet
+```
+
+<Callout type="info">
+  The concrete type is a `LinkedHashSet`, which is why insertion order is preserved and the
+  output still looks list-like. Do not read that as keeping a `List` — the duplicate `1`s
+  are gone and `[0]` will not compile.
+</Callout>
+
+## Related
+
+- [Lists](/collection-operations/collection-specific-operations/list-operations) — the ordered counterpart
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — what makes two elements "the same" to a set
+- [plus & minus Operators](/collection-operations/plus-and-minus-operators) — `-` on sets
+
+import { Callout } from 'nextra/components'

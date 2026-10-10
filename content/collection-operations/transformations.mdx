@@ -1,0 +1,248 @@
+---
+title: "Transformations"
+description: "map, zip, associate, flatten and joinToString — the stdlib extensions that build a new collection from an existing one."
+---
+
+# Transformations
+
+<DocSource docs={["collection-transformations"]} />
+
+Transformation functions build a **new** collection from an existing one. None of them
+mutate the receiver — the original is untouched and a fresh collection comes back.
+
+Every output block below was produced by running `examples/collection-operations/transformations.kt`
+with `pnpm examples:run` — none of it is written by hand.
+
+## Map
+
+`map()` applies a lambda to every element and returns the list of results, in the original
+order. `mapIndexed()` passes the index alongside the element.
+
+```kotlin
+val numbers = setOf(1, 2, 3)
+println(numbers.map { it * 3 })
+println(numbers.mapIndexed { idx, value -> value * idx })
+```
+
+```text
+[3, 6, 9]
+[0, 2, 6]
+```
+
+Note the receiver is a `Set` but the result is a `List` — mapping can produce duplicates,
+so it cannot stay a set.
+
+If the transform returns `null` for some elements, `mapNotNull()` drops them (and
+`mapIndexedNotNull()` is the indexed variant):
+
+```kotlin
+println(numbers.mapNotNull { if (it == 2) null else it * 3 })
+println(numbers.mapIndexedNotNull { idx, value -> if (idx == 0) null else value * idx })
+```
+
+```text
+[3, 9]
+[2, 6]
+```
+
+For maps, transform the keys or the values separately. Both lambdas receive the whole
+entry, so either side can use both key and value:
+
+```kotlin
+val numbersMap = mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key11" to 11)
+println(numbersMap.mapKeys { it.key.uppercase() })
+println(numbersMap.mapValues { it.value + it.key.length })
+```
+
+```text
+{KEY1=1, KEY2=2, KEY3=3, KEY11=11}
+{key1=5, key2=6, key3=7, key11=16}
+```
+
+## Zip
+
+`zip()` pairs up elements at matching positions and returns a `List<Pair<A, B>>`. It also
+reads well in infix form, `a zip b`.
+
+```kotlin
+val colors = listOf("red", "brown", "grey")
+val animals = listOf("fox", "bear", "wolf")
+println(colors zip animals)
+
+val twoAnimals = listOf("fox", "bear")
+println(colors.zip(twoAnimals))
+```
+
+```text
+[(red, fox), (brown, bear), (grey, wolf)]
+[(red, fox), (brown, bear)]
+```
+
+<Callout type="info">
+  When the sizes differ, the result is as long as the **shorter** collection — the extra
+  tail of the longer one is silently dropped. That silence is the thing to watch for.
+</Callout>
+
+Passing a transform instead builds the result directly, skipping the intermediate pairs:
+
+```kotlin
+println(colors.zip(animals) { color, animal ->
+    "The ${animal.replaceFirstChar { it.uppercase() }} is $color"
+})
+```
+
+```text
+[The Fox is red, The Bear is brown, The Wolf is grey]
+```
+
+`unzip()` goes the other way, splitting a list of pairs into a pair of lists:
+
+```kotlin
+val numberPairs = listOf("one" to 1, "two" to 2, "three" to 3, "four" to 4)
+println(numberPairs.unzip())
+```
+
+```text
+([one, two, three, four], [1, 2, 3, 4])
+```
+
+## Associate
+
+The three `associate*` functions all build a `Map` from a collection; they differ only in
+which side the original element ends up on.
+
+| Function | Element becomes | Lambda returns | Result for `listOf("one", "two")` |
+| :--- | :--- | :--- | :--- |
+| `associateWith { }` | the **key** | the value | `{one=3, two=3}` |
+| `associateBy { }` | the **value** | the key | `{O=one, T=two}` |
+| `associate { }` | neither | a `Pair` | whatever you build |
+
+`associateWith()` keeps the elements as keys:
+
+```kotlin
+val words = listOf("one", "two", "three", "four")
+println(words.associateWith { it.length })
+```
+
+```text
+{one=3, two=3, three=5, four=4}
+```
+
+`associateBy()` keeps the elements as values and derives the key. It also accepts a second
+lambda to transform the value:
+
+```kotlin
+println(words.associateBy { it.first().uppercaseChar() })
+println(words.associateBy(keySelector = { it.first().uppercaseChar() }, valueTransform = { it.length }))
+```
+
+```text
+{O=one, T=three, F=four}
+{O=3, T=5, F=4}
+```
+
+<Callout type="warning">
+  Four words went in and three entries came out. `"two"` and `"three"` both produce the key
+  `T`, and **the last one wins** — `"two"` is gone with no error. This is true of
+  `associateWith()` and `associate()` as well whenever keys collide. If you need to keep
+  every element, you want [grouping](/collection-operations/grouping), not association.
+</Callout>
+
+`associate()` returns the whole `Pair`, which is what you want when the key and value come
+out of one piece of work:
+
+```kotlin
+val names = listOf("Alice Adams", "Brian Brown", "Clara Campbell")
+println(names.associate { name -> parseFullName(name).let { it.lastName to it.firstName } })
+```
+
+```text
+{Adams=Alice, Brown=Brian, Campbell=Clara}
+```
+
+The docs flag a cost here: `associate()` creates a short-lived `Pair` per element, so prefer
+`associateWith()`/`associateBy()` on hot paths and reach for `associate()` when key and
+value genuinely come from the same computation.
+
+## Flatten
+
+`flatten()` collapses a collection of collections into one list:
+
+```kotlin
+val numberSets = listOf(setOf(1, 2, 3), setOf(4, 5, 6), setOf(1, 2))
+println(numberSets.flatten())
+```
+
+```text
+[1, 2, 3, 4, 5, 6, 1, 2]
+```
+
+Flattening does not deduplicate — the `1` and `2` from the third set are still there, even
+though the inputs were sets.
+
+`flatMap()` maps each element to a collection and flattens the results in one pass; it is
+exactly `map { }` followed by `flatten()`:
+
+```kotlin
+data class StringContainer(val values: List<String>)
+
+val containers = listOf(
+    StringContainer(listOf("one", "two", "three")),
+    StringContainer(listOf("four", "five", "six")),
+    StringContainer(listOf("seven", "eight"))
+)
+println(containers.flatMap { it.values })
+```
+
+```text
+[one, two, three, four, five, six, seven, eight]
+```
+
+## String representation
+
+`joinToString()` builds a `String` from the elements; `joinTo()` appends to an existing
+[`Appendable`](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.text/-appendable/)
+instead of allocating a new string.
+
+```kotlin
+val words = listOf("one", "two", "three", "four")
+
+println(words)
+println(words.joinToString())
+
+val listString = StringBuffer("The list of numbers: ")
+words.joinTo(listString)
+println(listString)
+```
+
+```text
+[one, two, three, four]
+one, two, three, four
+The list of numbers: one, two, three, four
+```
+
+Printing the list directly gives you the brackets; `joinToString()` with no arguments gives
+you comma-separated values without them.
+
+`separator`, `prefix` and `postfix` shape the result; `limit` and `truncated` cap it; a
+trailing lambda customizes each element:
+
+```kotlin
+println(words.joinToString(separator = " | ", prefix = "start: ", postfix = ": end"))
+println((1..100).toList().joinToString(limit = 10, truncated = "<...>"))
+println(words.joinToString { "Element: ${it.uppercase()}" })
+```
+
+```text
+start: one | two | three | four: end
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, <...>
+Element: ONE, Element: TWO, Element: THREE, Element: FOUR
+```
+
+## Related
+
+- [Filtering](/collection-operations/filtering) — keeping a subset rather than reshaping
+- [Grouping](/collection-operations/grouping) — when association would lose colliding keys
+- [Sequences](/language-basics/sequences) — run a chain of these lazily, in one pass
+
+import { Callout } from 'nextra/components'

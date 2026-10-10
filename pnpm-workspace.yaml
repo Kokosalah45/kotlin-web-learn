@@ -1,0 +1,8 @@
+# nextra-theme-docs@4.6.1 destructures `children` out of its props and then
+# validates the remainder against a schema that still marks `children` required.
+# zod <=4.1.x let that slide because `z.custom()` accepted `undefined`; from
+# 4.6.x it reports "expected nonoptional, received undefined" and every page
+# 500s. Pinned to the version the theme actually works against.
+# Revisit when nextra-theme-docs fixes LayoutPropsSchema.
+overrides:
+  zod: 4.1.12

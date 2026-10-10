@@ -1,0 +1,67 @@
+---
+title: "Collection Operations"
+description: "The full set of standard library operations on collections — transformations, filtering, grouping, ordering, aggregation and the type-specific extras."
+---
+
+# Collection Operations
+
+This is the largest section of the roadmap and the one you use every day. Every page here
+is written against the official docs and every output shown was produced by running the
+example file named on the page.
+
+## Start here
+
+[Operations Overview](/collection-operations/overview) explains how the whole API is laid
+out: member vs extension functions, why results must be assigned, the `*To` destination
+variants, and the naming rule that tells you whether a function mutates.
+
+[Constructing Collections](/collection-operations/constructing-collections) covers making
+one in the first place, and the difference between a copy and a second reference.
+
+## The common operations
+
+These work on every collection, read-only or mutable, and never modify the receiver.
+
+| Page | Functions |
+| :--- | :--- |
+| [Transformations](/collection-operations/transformations) | `map`, `zip`, `associate*`, `flatten`, `flatMap`, `joinToString` |
+| [Filtering](/collection-operations/filtering) | `filter`, `filterIsInstance`, `partition`, `any`/`all`/`none` |
+| [plus & minus Operators](/collection-operations/plus-and-minus-operators) | `+`, `-`, and the `+=` trap |
+| [Grouping](/collection-operations/grouping) | `groupBy`, `groupingBy`, `eachCount` |
+| [Retrieving Collection Parts](/collection-operations/retrieving-collection-parts) | `slice`, `take`, `drop`, `chunked`, `windowed` |
+| [Retrieving single elements](/collection-operations/retrieving-single-elements) | `first`, `find`, `elementAt`, and their `OrNull` forms |
+| [Ordering](/collection-operations/ordering) | `sorted*`, `reversed`, `asReversed`, `shuffled` |
+| [Aggregate Operations](/collection-operations/aggregate-operations) | `sum`, `average`, `min`/`max`, `fold`, `reduce` |
+
+## Mutation and type-specific extras
+
+- [Write Operations](/collection-operations/write-operations) — `add`, `remove`,
+  `retainAll`, `clear` on `MutableCollection`
+- [Collection-specific Operations](/collection-operations/collection-specific-operations) —
+  what [Lists](/collection-operations/collection-specific-operations/list-operations),
+  [Sets](/collection-operations/collection-specific-operations/set-operations) and
+  [Maps](/collection-operations/collection-specific-operations/map-operations) add
+
+## Underneath it all
+
+Two pages that are not roadmap nodes but explain behaviour the rest of the section depends
+on:
+
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — what makes two
+  elements "the same", and why mutating a key loses it in a `HashSet`
+- [Comparisons & Comparators](/collection-operations/comparisons-and-comparators) — the
+  `compareBy` → `compareValuesBy` → `compareValues` → `compareTo` chain
+
+## Things that catch people out
+
+Each of these is demonstrated with verified output on its page:
+
+- [`associateBy` silently drops colliding keys](/collection-operations/transformations#associate) — use `groupBy` when keys repeat
+- [`all {}` is `true` on an empty collection](/collection-operations/filtering#test-predicates)
+- [`average()` on an empty collection is `NaN`](/collection-operations/aggregate-operations#the-basics)
+- [`+=` means different things on `var` vs `val`](/collection-operations/plus-and-minus-operators#the--trap)
+- [`- element` removes one occurrence, `- listOf(element)` removes all](/collection-operations/plus-and-minus-operators#minus-treats-an-element-and-a-collection-differently)
+- [`takeWhile` stops early; `filter` does not](/collection-operations/retrieving-collection-parts#predicate-variants)
+- [`fold` and `reduce` give different answers for the same lambda](/collection-operations/aggregate-operations#fold-and-reduce)
+- [`asReversed()` and `subList()` are live views, not copies](/collection-operations/ordering#reverse-order)
+- [`==` on arrays compares references, not contents](/collection-operations/equality-and-hashing#arrays-are-the-exception)

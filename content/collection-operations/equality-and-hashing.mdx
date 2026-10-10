@@ -1,0 +1,226 @@
+---
+title: "Equality & Hashing"
+description: "Structural (==) vs referential (===) equality, why Set and Map depend on equals/hashCode, and what happens when you mutate a key."
+---
+
+# Equality & Hashing
+
+<DocSource docs={["equality"]} />
+
+Every `Set` and every `Map` key depends on `equals()` and `hashCode()`. Get those wrong and
+collections quietly misbehave — no exception, just wrong answers. This page is not a
+roadmap node of its own, but it sits underneath most of this section.
+
+Outputs below come from running `examples/collection-operations/equality-and-hashing.kt`.
+
+## Two kinds of equality
+
+| Operator | Name | Asks |
+| :--- | :--- | :--- |
+| `==` / `!=` | structural | do these have the same content? (calls `equals()`) |
+| `===` / `!==` | referential | are these the same object? |
+
+`a == b` is compiled to `a?.equals(b) ?: (b === null)` — so it is null-safe by
+construction, and comparing to `null` explicitly needs no special care:
+
+```kotlin
+val a = "hello"
+val b = "hello"
+val c: String? = null
+val d: String? = null
+val e = d
+println(a == b)
+println(a == c)
+println(c == e)
+```
+
+```text
+true
+false
+true
+```
+
+Referential equality asks a different question:
+
+```kotlin
+val s1 = "Hello"
+val s2 = s1
+val s3 = "world"
+val s4 = "world"
+println(s1 === s2)
+println(s1 === s3)
+println(s3 === s4)
+```
+
+```text
+true
+false
+true
+```
+
+The last `true` is the JVM interning identical string literals — not something to rely on.
+For values represented by primitives at runtime (such as `Int`), `===` is equivalent to
+`==`.
+
+## Which classes get structural equality for free
+
+`equals()` is inherited from `Any`, where it implements **referential** equality. Data
+classes and value classes override it automatically; ordinary classes do not:
+
+```kotlin
+data class DataPoint(val x: Int, val y: Int)
+class PlainPoint(val x: Int, val y: Int)
+
+println(DataPoint(1, 2) == DataPoint(1, 2))
+println(PlainPoint(1, 2) == PlainPoint(1, 2))
+```
+
+```text
+true
+false
+```
+
+To give an ordinary class structural equality, override `equals(other: Any?)` — and
+override `hashCode()` alongside it:
+
+```kotlin
+class Point(val x: Int, val y: Int) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Point) return false
+        return this.x == other.x && this.y == other.y
+    }
+
+    override fun hashCode(): Int = 31 * x + y
+}
+
+println(Point(1, 2) == Point(1, 2))
+```
+
+```text
+true
+```
+
+<Callout type="info">
+  Only `equals(other: Any?)` counts. An overload like `equals(other: Point)` is a different
+  function and `==` will ignore it. Equality is also unrelated to `Comparable` — a
+  `compareTo()` returning `0` does not make `==` true.
+</Callout>
+
+## Why collections care
+
+A `Set` deduplicates via `equals`/`hashCode`, so the same two values behave differently
+depending on the class:
+
+```kotlin
+println(setOf(DataPoint(1, 2), DataPoint(1, 2)).size)
+println(setOf(PlainPoint(1, 2), PlainPoint(1, 2)).size)
+```
+
+```text
+1
+2
+```
+
+### Mutating a key after inserting it
+
+This is the failure mode worth remembering. A `data class` derives `hashCode()` from its
+properties — so changing one after insertion files the object under a hash that no longer
+matches where it lives:
+
+```kotlin
+data class MutableKey(var id: Int)
+
+val set = HashSet<MutableKey>()
+val key = MutableKey(1)
+set.add(key)
+println("found before mutation: ${key in set}")
+key.id = 2
+println("found after mutation:  ${key in set}")
+println("still reported size:   ${set.size}")
+println("iteration still shows: ${set.toList()}")
+```
+
+```text
+found before mutation: true
+found after mutation:  false
+still reported size:   1
+iteration still shows: [MutableKey(id=2)]
+```
+
+<Callout type="warning">
+  The object is still in the set — `size` is 1 and iteration finds it — but `in` cannot
+  locate it, and neither can `remove()`. It is unreachable by lookup. Keep keys immutable:
+  prefer `val` properties in any class used as a `Set` element or `Map` key.
+</Callout>
+
+### Order counts for lists, not sets
+
+```kotlin
+println(listOf(1, 2, 3) == listOf(1, 2, 3))
+println(listOf(1, 2, 3) == listOf(3, 2, 1))
+println(setOf(1, 2, 3) == setOf(3, 2, 1))
+```
+
+```text
+true
+false
+true
+```
+
+## Arrays are the exception
+
+`Array` does **not** implement structural equality — `==` on arrays is reference identity.
+Use `contentEquals()`:
+
+```kotlin
+println(arrayOf(1, 2, 3) == arrayOf(1, 2, 3))
+println(arrayOf(1, 2, 3).contentEquals(arrayOf(1, 2, 3)))
+```
+
+```text
+false
+true
+```
+
+This is a good reason to prefer `List` unless you specifically need an array.
+
+## Floating-point equality
+
+When both operands are **statically** known to be `Float` or `Double`, the check follows
+[IEEE 754](https://en.wikipedia.org/wiki/IEEE_754). When they are not — boxed into `Any`,
+or inside a collection — structural equality applies instead, and the rules change:
+
+```kotlin
+val nan = Double.NaN
+println(nan == nan)
+
+val boxed: Any = Double.NaN
+println(boxed == Double.NaN)
+
+println(0.0 == -0.0)
+println(listOf(0.0) == listOf(-0.0))
+```
+
+```text
+false
+true
+true
+false
+```
+
+<Callout type="warning">
+  Every line flips when the value stops being statically floating-point. Under IEEE,
+  `NaN != NaN` and `0.0 == -0.0`. Under structural equality, `NaN` **is** equal to itself
+  (and sorts above everything, including `POSITIVE_INFINITY`), and `-0.0` is **not** equal
+  to `0.0`. Putting doubles in a `List`, `Set` or `Map` switches you to the second set of
+  rules.
+</Callout>
+
+## Related
+
+- [Ordering](/collection-operations/ordering) — `Comparable`, which is separate from equality
+- [Data Classes](/classes-and-objects/more-on-classes-and-objects/data-classes) — the generated `equals`/`hashCode`
+- [Arrays](/language-basics/basic-types/arrays) — `contentEquals` and friends
+
+import { Callout } from 'nextra/components'

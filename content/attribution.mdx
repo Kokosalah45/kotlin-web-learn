@@ -1,0 +1,68 @@
+---
+title: Attribution
+description: Sources, licenses, and how the content on this site is kept honest.
+---
+
+# Attribution
+
+This site is a study reference. It does not originate any claims about how Kotlin
+behaves — every page is written against the official documentation and links to it.
+
+## Kotlin documentation
+
+Prose and code examples are adapted from the official Kotlin documentation,
+whose source lives at
+[`JetBrains/kotlin-web-site`](https://github.com/JetBrains/kotlin-web-site)
+under the [Apache License 2.0](https://github.com/JetBrains/kotlin-web-site/blob/master/LICENSE).
+
+Each page carries an **Official sources** block naming the exact
+`kotlinlang.org/docs` pages and `kotlinlang.org/api/core` entries it was written
+from. Where this site summarizes, the linked page is authoritative.
+
+API signatures and behaviour notes come from the
+[Kotlin standard library API reference](https://kotlinlang.org/api/core/).
+
+Kotlin is a trademark of the [Kotlin Foundation](https://kotlinfoundation.org/).
+
+## Roadmap structure
+
+The parent categories and their subtopics are reconstructed from the
+[roadmap.sh Kotlin roadmap](https://roadmap.sh/kotlin), via its published graph at
+[`roadmap.sh/kotlin.json`](https://roadmap.sh/kotlin.json).
+
+roadmap.sh groups nodes three different ways, and all three were used so the tree
+here matches the rendered roadmap:
+
+- **graph edges** — a subtopic wired to its topic, and chains of subtopics wired
+  to each other;
+- **section boxes** — the drawn rectangles around *Basic Types*,
+  *Collection-specific Operations*, and *More on Classes & Objects*, resolved by
+  testing which nodes fall inside each box;
+- **column and row position** — satellites that carry no edge at all, resolved by
+  grouping them into contiguous vertical stacks and attaching each stack to the
+  topic or section heading it sits beside.
+
+All 101 subtopics resolve to a parent with no leftovers. The roadmap content
+itself is licensed per the
+[developer-roadmap repository](https://github.com/kamranahmedse/developer-roadmap).
+
+## Third-party documentation
+
+A few topics are documented outside `kotlinlang.org`; those pages link to the
+primary source: [Ktor](https://ktor.io/docs/), [Quarkus](https://quarkus.io/guides/kotlin),
+[Vert.x](https://vertx.io/docs/vertx-core/kotlin/), [Dokka](https://kotlinlang.org/docs/dokka-introduction.html),
+and the [Android roadmap](https://roadmap.sh/android).
+
+## Keeping it verifiable
+
+Two scripts guard the content, both runnable from the repo root:
+
+```bash
+pnpm content:fetch    # cache the official Markdown sources locally
+pnpm content:verify   # assert every docs/API link returns HTTP 200
+```
+
+`content:verify` fails the build if a link rots. The docs that live in other
+JetBrains repositories — coroutines, serialization, Dokka, Kotlin Multiplatform —
+have no Markdown in `kotlin-web-site`; `content:fetch` reports them as `no-md`
+and those pages link out rather than summarize.

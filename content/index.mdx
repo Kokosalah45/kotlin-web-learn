@@ -1,0 +1,52 @@
+---
+title: Kotlin Learn
+description: The roadmap.sh Kotlin roadmap as a browsable reference — every concept under its parent category, grounded in the official Kotlin documentation.
+---
+
+# Kotlin Learn
+
+Every concept from the [roadmap.sh Kotlin roadmap](https://roadmap.sh/kotlin), grouped
+under its parent category, with each page written from — and linked to — the
+[official Kotlin documentation](https://kotlinlang.org/docs/home.html) and the
+[standard library API reference](https://kotlinlang.org/api/core/).
+
+Ten parent categories, 52 topics, 101 subtopics. Every page opens with an
+**Official sources** block naming the exact `kotlinlang.org` pages it was written
+from, so you can always jump to the authoritative text.
+
+## Where to start
+
+import { Cards } from 'nextra/components'
+
+<Cards>
+  <Cards.Card title="Collection Operations" href="/collection-operations" arrow />
+  <Cards.Card title="Language Basics" href="/language-basics" arrow />
+  <Cards.Card title="Control Flow" href="/control-flow" arrow />
+  <Cards.Card title="Functions" href="/functions" arrow />
+</Cards>
+
+## The whole tree
+
+| Category | Covers |
+| :--- | :--- |
+| [Language Basics](/language-basics) | Variables, basic types, collections, ranges, sequences, printing |
+| [Control Flow](/control-flow) | `if`, `when`, `for`, `while`, labels, exceptions |
+| [Functions](/functions) | Parameters, `vararg`, lambdas, higher-order and extension functions |
+| [Collection Operations](/collection-operations) | Transformations, filtering, grouping, ordering, aggregation |
+| [Classes & Objects](/classes-and-objects) | Constructors, properties, inheritance, data/sealed/enum/inline classes, generics |
+| [Null Safety](/null-safety) | Nullable types, `?.`, `?:`, `!!`, safe casts, Java interop |
+| [Async Programming](/async-programming) | Coroutines, suspending functions, builders, `Flow`, channels |
+| [Packages & Ecosystem](/packages-and-ecosystem) | Packages, stdlib, libraries, KDoc, Gradle/Maven, CI, I/O, IDEs |
+| [Kotlin Platforms](/kotlin-platforms) | Multiplatform, JVM/Java, Native, Wasm, JS, scripting |
+| [Kotlin Applications](/kotlin-applications) | Android, server-side, data analysis, competitive programming, AI |
+
+## How these pages are built
+
+The category tree is reconstructed from [`roadmap.sh/kotlin.json`](https://roadmap.sh/kotlin.json)
+— its graph edges, section boxes, and node positions — so the grouping matches
+the roadmap you are following rather than one invented here.
+
+The prose is written against the Markdown sources of the official docs
+([`JetBrains/kotlin-web-site`](https://github.com/JetBrains/kotlin-web-site/tree/master/docs/topics),
+Apache 2.0), fetched into a local cache by `pnpm content:fetch`. Every doc and API
+link is checked for a `200` by `pnpm content:verify`. See [attribution](/attribution).
