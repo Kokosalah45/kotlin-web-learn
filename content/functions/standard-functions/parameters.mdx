@@ -1,18 +1,241 @@
 ---
 title: "parameters"
-description: "parameters in Kotlin."
+description: "Read-only parameters, default values and when they are evaluated, named arguments, and the rules that govern their order."
 ---
 
 # parameters
 
 <DocSource docs={["functions"]} />
 
-Kotlin's documentation for **parameters** lives outside the
-[kotlin-web-site](https://github.com/JetBrains/kotlin-web-site) repository, so there is
-no summary to quote here. Follow the official sources above.
+Parameters are declared `name: Type` and are **read-only inside the body** — implicitly
+`val`. The two things worth knowing beyond that are that a default value is an arbitrary
+expression evaluated *only when the argument is omitted*, and that defaults and named
+arguments interact through a short set of ordering rules.
+
+Outputs below come from running `examples/functions/parameters.kt`.
+
+## Parameters are read-only; the objects they point at are not
+
+When you pass an object, the compiler passes a copy of the reference. The function cannot
+rebind the parameter, but the copy points at the same object, so it can change that
+object's mutable state:
+
+```kotlin
+class Counter(var value: Int)
+
+fun reset(counter: Counter) {
+    counter.value = 0    // Allowed: modifies the object
+    // counter = Counter(0) // Error: 'val' cannot be reassigned
+}
+```
+
+```text
+Counter(value=7)
+Counter(value=0)
+```
 
 <Callout type="info">
-  This page has not been expanded yet. The links above are authoritative.
+  "Read-only parameter" is about the name, not the value. Kotlin gives you no `final`-style
+  guarantee about the object itself — the only way to get that is an immutable type.
 </Callout>
+
+## Default values
+
+Append `= value` to make a parameter optional. The default may be any expression, including
+one that reads an earlier parameter:
+
+```kotlin
+fun readBytes(
+    b: ByteArray,
+    off: Int = 0,
+    len: Int = b.size, // default computed from an earlier parameter
+) {
+    println("off=$off len=$len")
+}
+
+readBytes(ByteArray(4))
+readBytes(ByteArray(4), 2)
+readBytes(ByteArray(4), 1, 3)
+```
+
+```text
+off=0 len=4
+off=2 len=4
+off=1 len=3
+```
+
+A parameter that refers to another one must be declared *after* it — `len` cannot come
+before `b`.
+
+### Defaults are evaluated lazily
+
+A default expression runs only on the calls that omit the argument. The easiest way to see
+this is a default with a side effect:
+
+```kotlin
+fun traced(
+    b: Int,
+    print: Unit? = println("No argument passed for 'print'"),
+) {
+    println(b)
+}
+
+traced(1)
+traced(1, null)
+```
+
+```text
+No argument passed for 'print'
+1
+1
+```
+
+The flip side is that a default that *is* needed is re-evaluated on **every** such call.
+That is what you want for a mutable default:
+
+```kotlin
+// A mutable default: is the list created once, or once per call?
+fun collect(value: Int, into: MutableList<Int> = mutableListOf()): MutableList<Int> {
+    into.add(value)
+    return into
+}
+
+println(collect(1))
+println(collect(2))
+println(collect(3))
+```
+
+```text
+[1]
+[2]
+[3]
+```
+
+<Callout type="info">
+  Each call gets a **fresh** list, so Kotlin has none of Python's mutable-default-argument
+  trap, where the default object is created once at definition time and accumulates across
+  calls. The other side of the same coin: a default that opens a file or makes a network
+  call does so once per call, which the signature does not advertise.
+</Callout>
+
+## Ordering rules
+
+Three rules follow from "arguments are matched positionally until you start naming them".
+
+**A parameter with a default before one without** can only be reached by naming the later
+argument:
+
+```kotlin
+fun greeting(
+    userId: Int = 0,
+    message: String,
+) { println("$userId: $message") }
+
+greeting(message = "Hello!")
+// greeting("Hello!") // Error: No value passed for parameter 'message'
+```
+
+```text
+0: Hello!
+```
+
+**After the first skipped default, every later argument must be named:**
+
+```kotlin
+fun reformat(
+    str: String,
+    normalizeCase: Boolean = true,
+    upperCaseFirstLetter: Boolean = true,
+    divideByCamelHumps: Boolean = false,
+    wordSeparator: Char = ' ',
+) { /*...*/ }
+
+reformat("This is a long String!")
+reformat("This is a short String!", upperCaseFirstLetter = false, wordSeparator = '_')
+reformat("String!", normalizeCase = false, upperCaseFirstLetter = false, divideByCamelHumps = true, '_')
+```
+
+```text
+This is a long String! | true true false ' '
+This is a short String! | true false false '_'
+String! | false false true '_'
+```
+
+The third call mixes styles: a positional `'_'` is allowed after named arguments as long as
+it still lands in its own position.
+
+**A trailing lambda is the exception** to the first rule, because the last parameter has to
+be the function being passed:
+
+```kotlin
+fun log(
+    level: Int = 0,
+    code: Int = 1,
+    action: () -> Unit,
+) {
+    println("level=$level code=$code")
+    action()
+}
+
+log(1) { println("Connection established") }
+log(action = { println("Connection established") })
+log { println("Connection established") }
+```
+
+```text
+level=1 code=1
+Connection established
+level=0 code=1
+Connection established
+level=0 code=1
+Connection established
+```
+
+## Overrides inherit the base defaults
+
+An overriding method may not restate default values — and uses the base method's:
+
+```kotlin
+open class Shape {
+    open fun draw(width: Int = 10, height: Int = 5) { println("drawing ${width}x$height") }
+}
+
+class Rectangle : Shape() {
+    // Defaults may not be repeated here; the base values are used.
+    override fun draw(width: Int, height: Int) { println("rectangle ${width}x$height") }
+}
+
+val shape: Shape = Rectangle()
+shape.draw()
+```
+
+```text
+rectangle 10x5
+```
+
+<Callout type="warning">
+  This means a subclass cannot change a default. Defaults are resolved against the
+  **statically known** declaration, so redeclaring them would let the same call produce
+  different arguments depending on the runtime type — Kotlin forbids it outright rather
+  than letting it be ambiguous.
+</Callout>
+
+## Named arguments and Java
+
+When you name arguments you may list them in any order, which is what makes a call with
+several booleans or a `null` readable. Two limits:
+
+- Calling a **Java** method from Kotlin cannot use named arguments — JVM bytecode does not
+  reliably preserve parameter names.
+- A `vararg` parameter can be passed by name only as an array:
+  `mergeStrings(strings = arrayOf("a", "b", "c"))`. See
+  [varargs](/functions/standard-functions/varargs).
+
+## Related
+
+- [return](/functions/standard-functions/return) — what comes back out
+- [varargs](/functions/standard-functions/varargs) — a variable number of arguments
+- [Standard functions](/functions/standard-functions) — declaring the function itself
+- [Lambda Functions](/functions/function-types/lambda-functions) — the trailing-lambda convention
 
 import { Callout } from 'nextra/components'

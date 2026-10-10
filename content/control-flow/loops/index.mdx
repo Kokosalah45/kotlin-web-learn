@@ -1,19 +1,204 @@
 ---
 title: "Loops"
-description: "Loops in Kotlin."
+description: "for, while and do-while, what the for loop actually requires of its subject, and when to use a collection operation instead."
 ---
 
 # Loops
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+Kotlin has three loops and no C-style `for (i = 0; i < n; i++)`. `for` iterates over
+anything that provides an iterator; `while` and `do-while` repeat on a condition. None of
+them is an expression, so a loop never produces a value — that is what the
+[collection operations](/collection-operations) are for.
+
+Outputs below come from running `examples/control-flow/loops.kt`.
+
+## for
+
+```kotlin
+val shoppingList = listOf("Milk", "Bananas", "Bread")
+println("Things to buy:")
+for (item in shoppingList) {
+    println("- $item")
+}
+```
+
+```text
+Things to buy:
+- Milk
+- Bananas
+- Bread
+```
+
+To count, iterate a [range](/language-basics/ranges) — `..` includes the end, `..<`
+does not, and `downTo` / `step` adjust direction and stride:
+
+```kotlin
+for (i in 1..6) print(i)
+for (i in 1..<6) print(i)
+for (i in 6 downTo 0 step 2) print(i)
+```
+
+```text
+123456
+12345
+6420
+```
+
+[for](/control-flow/loops/for) covers indices, `withIndex()`, destructuring and the
+pitfalls of mutating a collection you are iterating.
+
+## while and do-while
+
+The only difference is when the condition is checked. `while` checks first, so it may not
+run at all; `do-while` checks last, so it always runs **once**:
+
+```kotlin
+var carsInGarage = 0
+val maxCapacity = 3
+while (carsInGarage < maxCapacity) {
+    println("Car entered. Cars now in garage: ${++carsInGarage}")
+}
+println("Garage is full!")
+
+var attempts = 0
+do {
+    attempts++
+    println("Attempt $attempts")
+} while (attempts < 1)
+```
+
+```text
+Car entered. Cars now in garage: 1
+Car entered. Cars now in garage: 2
+Car entered. Cars now in garage: 3
+Garage is full!
+Attempt 1
+```
+
+More in [while](/control-flow/loops/while).
+
+## What for needs
+
+A `for` loop works on anything with an `iterator()` that returns something with `next()`
+and a `Boolean`-returning `hasNext()`. Collections have one; ranges and arrays compile to
+index-based loops instead.
+
+The easiest route is implementing `Iterable<T>`:
+
+```kotlin
+class Booklet(val totalPages: Int) : Iterable<Int> {
+    override fun iterator(): Iterator<Int> {
+        return object : Iterator<Int> {
+            var current = 1
+            override fun hasNext() = current <= totalPages
+            override fun next() = current++
+        }
+    }
+}
+
+for (page in Booklet(3)) println("Reading page $page")
+```
+
+```text
+Reading page 1
+Reading page 2
+Reading page 3
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `Iterable` is not required. An `operator fun iterator()` is enough:
+
+  ```kotlin
+  class Countdown(val from: Int) {
+      operator fun iterator(): Iterator<Int> = object : Iterator<Int> {
+          var current = from
+          override fun hasNext() = current >= 0
+          override fun next() = current--
+      }
+  }
+
+  for (n in Countdown(3)) print(n)
+  ```
+
+  ```text
+  3210
+  ```
+
+  And it can be an **extension**, which is how you make a `for` loop work over a
+  third-party type you cannot change:
+
+  ```kotlin
+  class Chapter(val pages: List<Page>)
+
+  operator fun Chapter.iterator(): Iterator<Page> = pages.iterator()
+
+  for (page in Chapter(listOf(Page(1), Page(2)))) print("p${page.number} ")
+  ```
+
+  ```text
+  p1 p2 
+  ```
 </Callout>
+
+## break and continue
+
+Both apply to the nearest enclosing loop, and a
+[label](/control-flow/loops/label-loops) redirects them to an outer one:
+
+```kotlin
+for (i in 1..10) {
+    if (i % 2 == 0) continue
+    if (i > 7) break
+    print(i)
+}
+```
+
+```text
+1357
+```
+
+See [break & continue](/control-flow/loops/break-and-continue).
+
+## When not to write a loop
+
+A loop that only builds a value is usually a collection operation with a name:
+
+```kotlin
+val firstLong = shoppingList.firstOrNull { it.length > 5 }
+println(firstLong)
+```
+
+```text
+Bananas
+```
+
+| Loop that... | Operation |
+| :--- | :--- |
+| stops at the first match | `first { }`, `firstOrNull { }`, `find { }` |
+| accumulates a total | `sum()`, `sumOf { }`, `fold`, `reduce` |
+| builds a new list | `map { }`, `mapNotNull { }`, `flatMap { }` |
+| selects some elements | `filter { }`, `filterNot { }`, `partition { }` |
+| breaks on a condition | `takeWhile { }`, `dropWhile { }` |
+| checks a condition | `any { }`, `all { }`, `none { }` |
+
+They read better, they compose, and on a [sequence](/language-basics/sequences) they are no
+less efficient. Keep the explicit loop for side effects, early exits with several
+conditions, and index arithmetic.
+
+## Related
+
+- [for](/control-flow/loops/for) — iterating collections, ranges and indices
+- [while](/control-flow/loops/while) — condition-driven loops
+- [break & continue](/control-flow/loops/break-and-continue) — jumping out and on
+- [Label Loops](/control-flow/loops/label-loops) — targeting an outer loop
+- [Iterators](/language-basics/collections/iterators) — what `for` consumes
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/loops.kt" />
 
 import { Callout } from 'nextra/components'

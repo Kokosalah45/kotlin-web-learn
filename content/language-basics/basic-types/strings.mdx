@@ -1,19 +1,432 @@
 ---
 title: "Strings"
-description: "Strings in Kotlin."
+description: "String literals, multiline strings and trimIndent, immutability, comparison, splitting, and building with buildString."
 ---
 
 # Strings
 
 <DocSource docs={["strings"]} api={["kotlin-stdlib/kotlin/-string/"]} />
 
-The [`String`](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/) type represents a sequence of [characters](https://kotlinlang.org/docs/characters.html). You can use it for text values, such as words, sentences, messages, or structured text.
+`String` is a sequence of [characters](/language-basics/basic-types/characters) and it is
+**immutable** — every operation that looks like a change returns a new string. The things
+worth knowing beyond that: multiline strings ignore escape sequences, `==` compares content
+(unlike Java), and indexing is by UTF-16 code unit.
+
+Outputs below come from running `examples/language-basics/strings.kt`.
+
+## Declaring
+
+Double quotes, with [escape sequences](/language-basics/basic-types/characters#escape-sequences):
+
+```kotlin
+val name: String = "Kotlin"
+val message = "Hello, world!" // Kotlin infers String
+
+println("Hello,\nworld!")
+println("Kotlin says, \"Hi\".")
+```
+
+```text
+Hello,
+world!
+Kotlin says, "Hi".
+```
+
+## Multiline strings
+
+Triple quotes keep the layout exactly as written and need no escaping for quotes:
+
+```kotlin
+val text = """
+Hello,
+Kotlin
+"""
+print(text)
+val quote = """Kotlin says, "Hi"."""
+println(quote)
+```
+
+```text
+
+Hello,
+Kotlin
+Kotlin says, "Hi".
+```
+
+Note the blank first line: the newline right after `"""` is part of the string.
+
+<Callout type="warning">
+  A multiline string does **not** process escape sequences — they stay as literal
+  characters:
+
+  ```kotlin
+  println("""a\nb""")
+  println("""a\nb""".length)
+  ```
+
+  ```text
+  a\nb
+  4
+  ```
+
+  Four characters: `a`, `\`, `n`, `b`. That is usually exactly what you want for regexes and
+  Windows paths, and a nasty surprise when you expected a line break. For a real newline,
+  break the line in the source — or interpolate one with `${'\n'}`.
+</Callout>
+
+Leading whitespace is part of the string too, so use `trimIndent()`, which removes the
+common minimal indent of the non-blank lines:
+
+```kotlin
+val indented = """
+    Hello,
+    Kotlin
+""".trimIndent()
+println(indented)
+
+val notTrimmed = """
+    Hello,
+    Kotlin
+"""
+println(notTrimmed.lines().map { it.length })
+```
+
+```text
+Hello,
+Kotlin
+[0, 14, 14, 4]
+```
+
+The untrimmed version's lines are 0, 14, 14 and 4 characters long — all that indentation is
+real content. `trimMargin()` is the explicit alternative, cutting everything up to and
+including a prefix (`|` by default):
+
+```kotlin
+println(
+    """
+    |Hello,
+    |Kotlin
+    """.trimMargin()
+)
+println(
+    """
+    >Hello,
+    >Kotlin
+    """.trimMargin(">")
+)
+```
+
+```text
+Hello,
+Kotlin
+Hello,
+Kotlin
+```
+
+Both functions normalise line separators to `\n` regardless of platform.
+
+## Immutability
+
+```kotlin
+val original = "Kotlin"
+val upper = original.uppercase()
+println("$original / $upper")
+```
+
+```text
+Kotlin / KOTLIN
+```
+
+`original` is unchanged — `uppercase()` returned a new string. The same goes for `trim`,
+`replace`, `substring` and every other "modifying" function.
+
+## Length and indexing
+
+```kotlin
+println(name.length)
+println(name[0])
+println(name[5])
+println(runCatching { name[6] }.exceptionOrNull()?.let { it::class.simpleName })
+println(name.getOrNull(6))
+```
+
+```text
+6
+K
+n
+StringIndexOutOfBoundsException
+null
+```
+
+Out of range throws `StringIndexOutOfBoundsException` — a *different* class from the
+`ArrayIndexOutOfBoundsException` an [array](/language-basics/basic-types/arrays) throws,
+though both extend `IndexOutOfBoundsException`. `getOrNull` is the safe form.
+
+Remember `length` counts **code units**, so a string containing one emoji has length 2 — see
+[Characters](/language-basics/basic-types/characters#one-char-is-not-one-character).
+
+## Extracting parts
+
+```kotlin
+println("Kotlin".substring(1))
+println("Kotlin".substring(1, 5))
+println("Kotlin".subSequence(1, 5))
+println("Kotlin".take(3))
+println("Kotlin".drop(3))
+```
+
+```text
+otlin
+otli
+otli
+Kot
+lin
+```
+
+`substring` returns a `String`, `subSequence` a `CharSequence`. `take` and `drop` are the
+collection-style equivalents, and they clamp at the boundaries where `substring` would
+throw.
+
+## Comparison
+
+`==` compares **content**:
+
+```kotlin
+println("kotlin" == "kotlin")
+println("kotlin" == "Kotlin")
+println("abc".compareTo("abd") < 0)
+println("abc".compareTo("ABC") > 0)
+println("abc".compareTo("ABC", ignoreCase = true) == 0)
+println("abc".equals("ABC", ignoreCase = true))
+```
+
+```text
+true
+false
+true
+true
+true
+true
+```
+
+`compareTo` returns `0` for equal, negative when the receiver sorts first, positive
+otherwise — and it takes an `ignoreCase` parameter, as does `equals`.
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Coming from Java, `==` on strings is the headline difference: it is `equals`, not
+  reference identity. `===` is reference identity, and its results are less intuitive than
+  you might expect:
+
+  ```kotlin
+  val a = "kotlin"
+  val b = "kot" + "lin"
+  val c = StringBuilder("kot").append("lin").toString()
+  println("a == b: ${a == b}, a === b: ${a === b}")
+  println("a == c: ${a == c}, a === c: ${a === c}")
+  ```
+
+  ```text
+  a == b: true, a === b: true
+  a == c: true, a === c: false
+  ```
+
+  `"kot" + "lin"` is folded at compile time into the same interned constant as `a`, so
+  `===` is `true`; the `StringBuilder` result is computed at runtime, so it is not. Which is
+  exactly why you should never reason about string equality with `===`.
 </Callout>
+
+## Changing content means copying
+
+```kotlin
+val padded = "  Hello, Kotlin  "
+println("[${padded.trim()}]")
+println("[${padded.replace("Kotlin", "world")}]")
+println("[${padded.uppercase()}]")
+```
+
+```text
+[Hello, Kotlin]
+[  Hello, world  ]
+[  HELLO, KOTLIN  ]
+```
+
+## Inspecting and splitting
+
+```kotlin
+val domain = "kotlinlang.org"
+println(domain.contains("."))
+println(domain.startsWith("kotlin"))
+println(domain.endsWith(".org"))
+println(domain.indexOf("lang"))
+println(domain.indexOf("swift"))
+```
+
+```text
+true
+true
+true
+6
+-1
+```
+
+`indexOf` returns `-1` when there is no match, which pairs well with `takeIf { it >= 0 }`.
+
+```kotlin
+println("one, two, three".split(", "))
+println("one\ntwo\nthree".lines())
+println("a,b,,c".split(","))
+println("a1b2c3".split("1", "2"))
+```
+
+```text
+[one, two, three]
+[one, two, three]
+[a, b, , c]
+[a, b, c3]
+```
+
+<Callout type="warning">
+  `split` keeps empty parts — `"a,b,,c".split(",")` has four elements, one of them `""`.
+  Filter them out (`.filter { it.isNotEmpty() }`) if you did not want them. And `split`
+  takes **several** delimiters, so `split("1", "2")` splits on either; the trailing `c3`
+  survives because `3` was not one.
+</Callout>
+
+## Building
+
+Concatenating with `+` allocates a new string every time — fine for two pieces, wasteful in
+a loop. `buildString` gives you a `StringBuilder` as the lambda's receiver:
+
+```kotlin
+val status = buildString {
+    if (hasErrors) append("Errors found")
+    if (hasWarnings) {
+        if (isNotEmpty()) append("; ")
+        append("Warnings found")
+    }
+    if (isComplete) {
+        if (isNotEmpty()) append("; ")
+        append("Completed")
+    }
+    if (isEmpty()) append("OK")
+}
+println(status)
+```
+
+```text
+Errors found; Warnings found
+```
+
+`isNotEmpty()` and `isEmpty()` inside the block are the *builder's*, which is what makes the
+separator logic read cleanly. Use `StringBuilder` directly when you need the buffer as a
+value:
+
+```kotlin
+val builder = StringBuilder("Hello, Kotlin")
+builder.replace(7, 13, "world")
+println(builder.toString())
+```
+
+```text
+Hello, world
+```
+
+On the JVM, `String.format` is there for formatter-style specifiers:
+
+```kotlin
+println(String.format("Hello, %s", "Kotlin"))
+println(String.format("%05.2f", 3.14159))
+```
+
+```text
+Hello, Kotlin
+03.14
+```
+
+For everything else, prefer a
+[string template](/language-basics/printing-data/string-templates).
+
+## Conversion
+
+```kotlin
+println(10.toString())
+println("10".toInt())
+println("1000000000000".toIntOrNull())
+println(runCatching { "1000000000000".toInt() }.exceptionOrNull()?.let { it::class.simpleName })
+println("true".toBooleanStrict())
+println("yes".toBooleanStrictOrNull())
+println("3.5".toDouble())
+println("abc".toDoubleOrNull())
+```
+
+```text
+10
+10
+null
+NumberFormatException
+true
+null
+3.5
+null
+```
+
+Use the `*OrNull` variants on anything you did not produce yourself. Note that
+`toIntOrNull()` returns `null` for a value that is a perfectly valid number but **out of
+range**, not only for non-numeric text.
+
+## Empty or blank
+
+```kotlin
+println("".isEmpty())
+println("   ".isEmpty())
+println("   ".isBlank())
+println("".isNullOrEmpty())
+val nothing: String? = null
+println(nothing.isNullOrEmpty())
+println(nothing.isNullOrBlank())
+```
+
+```text
+true
+false
+true
+true
+true
+true
+```
+
+Empty means length zero; blank means empty *or* only whitespace. The `isNullOr*` pair are
+extensions on `String?`, so they can be called without a null check — see
+[nullable receivers](/functions/extension-functions#nullable-receivers).
+
+## joinToString
+
+```kotlin
+println(listOf("a", "b", "c").joinToString())
+println(listOf("a", "b", "c").joinToString(separator = "", prefix = "<", postfix = ">"))
+println((1..10).joinToString(limit = 3, truncated = "..."))
+```
+
+```text
+a, b, c
+<abc>
+1, 2, 3, ...
+```
+
+The default separator is `", "` — a comma **and a space**, which catches everyone building
+a CSV line.
+
+## Related
+
+- [Characters](/language-basics/basic-types/characters) — what a `String` is made of
+- [String Templates](/language-basics/printing-data/string-templates) — `$name` and `${expr}`
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Arrays](/language-basics/basic-types/arrays) — `toCharArray()` and back
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/strings.kt" />
 
 import { Callout } from 'nextra/components'

@@ -1,19 +1,179 @@
 ---
 title: "Conditional Expressions"
-description: "Conditional Expressions in Kotlin."
+description: "if and when as expressions rather than statements, and the exhaustiveness rule that follows from it."
 ---
 
 # Conditional Expressions
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+Kotlin has no ternary operator because it does not need one: `if` and `when` are
+**expressions**, so they produce a value you can assign or return. That single design
+choice is where the exhaustiveness rules come from — an expression must produce a value on
+every path, a statement need not.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/control-flow/conditional-expressions.kt`.
+
+## Statement or expression
+
+The same `if` used two ways:
+
+```kotlin
+// As a statement: run something.
+var taller = heightAlice
+if (heightAlice < heightBob) taller = heightBob
+println(taller)
+
+// As an expression: produce something.
+val tallerExpr = if (heightAlice > heightBob) heightAlice else heightBob
+println(tallerExpr)
+```
+
+```text
+175
+175
+```
+
+`when` works the same way:
+
+```kotlin
+// Statement: triggers a print, returns nothing.
+when (userRole) {
+    "Viewer" -> println("User has read-only access")
+    "Editor" -> println("User can edit content")
+    else -> println("User role is not recognized")
+}
+
+// Expression: the matching branch's value becomes the result.
+val text = when (x) {
+    1 -> "x == 1"
+    2 -> "x == 2"
+    else -> "x is neither 1 nor 2"
+}
+println(text)
+```
+
+```text
+User can edit content
+x == 2
+```
+
+## Exhaustiveness
+
+An expression must cover every case, so `if` used as an expression **requires** an `else`,
+and `when` used as an expression requires either an `else` or branches that provably cover
+the subject.
+
+A `when` **statement** need not cover everything, and nothing happens if no branch matches:
+
+```kotlin
+val deliveryStatus = "OutForDelivery"
+when (deliveryStatus) {
+    // Not all cases are covered
+    "Pending" -> println("Your order is being prepared")
+    "Shipped" -> println("Your order is on the way")
+}
+println("nothing matched, and that is not an error")
+```
+
+```text
+nothing matched, and that is not an error
+```
+
+A `when` expression over a subject with a finite set of values — an `enum`, a `sealed`
+type, `Boolean`, or their nullable forms — can be exhaustive without an `else`:
+
+```kotlin
+enum class Bit { ZERO, ONE }
+
+val numericValue = when (Bit.ONE) {
+    // No else branch is needed because all cases are covered
+    Bit.ZERO -> 0
+    Bit.ONE -> 1
+}
+println(numericValue)
+```
+
+```text
+1
+```
+
+<Callout type="warning">
+  kotlinlang.org says a `when` **statement** does not need to cover all cases. That is true
+  only when the subject has no closed set of values. On kotlinc 2.4.21 a non-exhaustive
+  *statement* over an `enum`, `sealed` or `Boolean` subject is a hard **error**:
+
+  ```text
+  error: 'when' expression must be exhaustive. Add the 'ONE' branch or an 'else' branch.
+  ```
+
+  Which is the behaviour you want — adding a case to a sealed hierarchy should break every
+  `when` that has to handle it — but it does mean "statement" and "expression" are not the
+  dividing line the prose suggests. [`when`](/control-flow/conditional-expressions/when)
+  has the detail.
 </Callout>
+
+## Branches can be blocks
+
+Any branch of either construct can be a block, and the **last expression in the block** is
+that branch's value:
+
+```kotlin
+val chosen = if (heightAlice > heightBob) {
+    println("Choose Alice")
+    heightAlice
+} else {
+    println("Choose Bob")
+    heightBob
+}
+println(chosen)
+```
+
+```text
+Choose Bob
+175
+```
+
+## if or when?
+
+For a chain of unrelated boolean tests they are interchangeable, and a subjectless `when`
+is usually easier to extend:
+
+```kotlin
+fun describeIf(n: Int): String =
+    if (n < 0) "negative" else if (n == 0) "zero" else "positive"
+
+fun describeWhen(n: Int): String = when {
+    n < 0 -> "negative"
+    n == 0 -> "zero"
+    else -> "positive"
+}
+
+for (n in listOf(-1, 0, 1)) println("${describeIf(n)} / ${describeWhen(n)}")
+```
+
+```text
+negative / negative
+zero / zero
+positive / positive
+```
+
+Reach for `if` for a single two-way test, and for `when` as soon as there are three
+branches, a subject being compared against several values, or type checks involved — `when`
+gets `in`, `is`, comma-grouped conditions, guards and exhaustiveness checking, none of
+which `if` has.
+
+## Related
+
+- [if](/control-flow/conditional-expressions/if) — the two-branch form in detail
+- [when](/control-flow/conditional-expressions/when) — subjects, guards, exhaustiveness
+- [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts) — the smart casts these enable
+- [Exceptions](/control-flow/exceptions) — `throw` is an expression too
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/conditional-expressions.kt" />
 
 import { Callout } from 'nextra/components'

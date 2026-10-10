@@ -70,8 +70,14 @@ Pages written out in full carry worked examples with executed output. Pages stil
 the quoted-summary callout have not been expanded, and say so on the page itself — there is
 no page that looks finished but is not.
 
-Currently expanded: all of **Collection Operations** (18 pages), plus **Collections**,
-**Sequences**, **Ranges** and **Progressions** under Language Basics.
+Currently expanded: all of **Collection Operations** (18 pages), all of **Functions**
+(13 pages), all of **Control Flow** (11 pages), and under **Language Basics** the seven
+**Basic Types**, **Variables** / **val vs var**, **Data types** / **Type Inference** /
+**Type Checks & Casts**, **main Function**, plus **Collections**, **Sequences**, **Ranges**
+and **Progressions**.
+
+Still quoted rather than expanded: **Introduction to Kotlin** (5 pages), **Code
+Organization**, **Comments** and **Printing data** (3 pages).
 
 ### 4. Every output shown was actually executed
 

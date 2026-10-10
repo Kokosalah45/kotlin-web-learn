@@ -1,19 +1,368 @@
 ---
 title: "when"
-description: "when in Kotlin."
+description: "when with and without a subject, in / is / comma branches, guard conditions, subject capture, and real exhaustiveness rules."
 ---
 
 # when
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+`when` looks like `switch` and is not one. It compares its subject against each branch **in
+order** until one matches, the conditions can be anything — values, ranges, types, guards,
+or arbitrary booleans — and used as an expression it is checked for exhaustiveness. The
+first-match-wins ordering is the part people forget.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/control-flow/when.kt`.
+
+## With or without a subject
+
+With a subject, each branch is compared against it:
+
+```kotlin
+val userRole = "Editor"
+when (userRole) {
+    "Viewer" -> println("User has read-only access")
+    "Editor" -> println("User can edit content")
+    else -> println("User role is not recognized")
+}
+```
+
+```text
+User can edit content
+```
+
+Without one, each branch is a boolean expression and the first `true` one wins. A
+subjectless `when` used as an expression **must** have an `else`:
+
+```kotlin
+val message = when {
+    localFileSize > remoteFileSize -> "Local file is larger than remote file"
+    localFileSize < remoteFileSize -> "Local file is smaller than remote file"
+    else -> "Local and remote files are the same size"
+}
+println(message)
+```
+
+```text
+Local and remote files are the same size
+```
+
+## What a branch condition can be
+
+**Several values, comma-separated:**
+
+```kotlin
+for (ticketPriority in listOf("Low", "Medium", "High")) {
+    when (ticketPriority) {
+        "Low", "Medium" -> println("$ticketPriority: standard response time")
+        else -> println("$ticketPriority: high-priority handling")
+    }
+}
+```
+
+```text
+Low: standard response time
+Medium: standard response time
+High: high-priority handling
+```
+
+**Any expression**, evaluated when the branch is reached:
+
+```kotlin
+val storedPin = "1234"
+val enteredPin = 1234
+when (enteredPin) {
+    storedPin.toInt() -> println("PIN is correct")
+    else -> println("Incorrect PIN")
+}
+```
+
+```text
+PIN is correct
+```
+
+**Membership of a range or collection,** with `in` / `!in`:
+
+```kotlin
+val x = 7
+val validNumbers = setOf(15, 16, 17)
+when (x) {
+    in 1..10 -> println("x is in the range")
+    in validNumbers -> println("x is valid")
+    !in 10..20 -> println("x is outside the range")
+    else -> println("none of the above")
+}
+```
+
+```text
+x is in the range
+```
+
+**A type check,** with `is` / `!is` — and the subject is smart cast inside the branch:
+
+```kotlin
+fun hasPrefix(input: Any): Boolean = when (input) {
+    is String -> input.startsWith("ID-")
+    else -> false
+}
+
+println(hasPrefix("ID-98345"))
+println(hasPrefix(98345))
+
+val typed: Any = listOf(1, 2, 3)
+println(
+    when (typed) {
+        is String -> "a String of length ${typed.length}"
+        is List<*> -> "a List of size ${typed.size}"
+        else -> "something else"
+    }
+)
+```
+
+```text
+true
+false
+a List of size 3
+```
+
+`input.startsWith` and `typed.size` need no cast — the `is` check narrowed the type.
+
+## Branches are tried in order
+
+This is where `when` stops behaving like a jump table:
+
+```kotlin
+for (n in listOf(5, 16, 25, 15)) {
+    val which = when (n) {
+        in 1..10 -> "first branch (1..10)"
+        in validNumbers -> "second branch (validNumbers)"
+        !in 10..20 -> "third branch (!in 10..20)"
+        else -> "else"
+    }
+    println("$n -> $which")
+}
+```
+
+```text
+5 -> first branch (1..10)
+16 -> second branch (validNumbers)
+25 -> third branch (!in 10..20)
+15 -> second branch (validNumbers)
+```
+
+<Callout type="warning">
+  `5` satisfies the third branch too — it is certainly `!in 10..20` — but the first branch
+  claimed it, so the third is never consulted. Overlapping conditions are resolved purely
+  by **order**: there is no check that branches are disjoint and no warning about a branch
+  that can never be reached. Put the most specific condition first.
 </Callout>
+
+The subject is evaluated **exactly once**, no matter how many branches are tested:
+
+```kotlin
+fun noisySubject(): Int {
+    println("  subject evaluated")
+    return 3
+}
+
+when (noisySubject()) {
+    1 -> println("one")
+    2 -> println("two")
+    3 -> println("three")
+    else -> println("other")
+}
+```
+
+```text
+  subject evaluated
+three
+```
+
+## Capturing the subject
+
+`when (val x = expr)` names the subject so the branches — and the `else` — can use it. The
+name is scoped to the `when`:
+
+```kotlin
+val captured = when (val input = "maybe") {
+    "yes" -> "You said yes"
+    "no" -> "You said no"
+    else -> "Unrecognized input: $input"
+}
+println(captured)
+```
+
+```text
+Unrecognized input: maybe
+```
+
+## Guard conditions
+
+A branch may add a second condition after `if`. The guard is only evaluated if the primary
+condition matched:
+
+```kotlin
+sealed interface Animal {
+    data class Cat(val mouseHunter: Boolean) : Animal
+    data class Dog(val breed: String) : Animal
+}
+
+fun feedAnimal(animal: Animal) {
+    when (animal) {
+        // Branch with only a primary condition
+        is Animal.Dog -> feedDog()
+        // Branch with a primary condition and a guard
+        is Animal.Cat if !animal.mouseHunter -> feedCat()
+        else -> println("Unknown animal")
+    }
+}
+
+listOf(Animal.Dog("Beagle"), Animal.Cat(mouseHunter = false), Animal.Cat(mouseHunter = true))
+    .forEach { feedAnimal(it) }
+```
+
+```text
+Feeding a dog
+Feeding a cat
+Unknown animal
+```
+
+The third animal is a mouse-hunting cat: it matches `is Animal.Cat`, fails the guard, and
+falls through to `else`. And the guard really is skipped when the primary condition misses:
+
+```kotlin
+fun loudGuard(value: Boolean): Boolean {
+    println("  guard evaluated")
+    return value
+}
+
+val subject: Animal = Animal.Dog("Collie")
+when (subject) {
+    is Animal.Cat if loudGuard(true) -> println("cat")
+    is Animal.Dog -> println("dog")
+    else -> println("neither")
+}
+```
+
+```text
+dog
+```
+
+Guards need a subject, cannot be combined with comma-separated conditions, support
+`else if`, and can be joined with `&&` and `||` — parenthesise those for readability.
+
+## Exhaustiveness, for real
+
+A `when` **expression** must cover every case. With a subject it can do so via `else`, or
+by covering a closed set of values: `Boolean`, an `enum`, a `sealed` type, or their
+nullable forms.
+
+```kotlin
+val flag: Boolean? = true
+println(
+    when (flag) {
+        true -> "yes"
+        false -> "no"
+        null -> "unknown"
+    }
+)
+```
+
+```text
+yes
+```
+
+<Callout type="warning">
+  The official page says a `when` *statement* "doesn't need to cover all possible cases".
+  That holds for an open subject like a `String`, but on kotlinc 2.4.21 a non-exhaustive
+  **statement** over a closed subject is an error, not a warning:
+
+  ```kotlin
+  when (Bit.ONE) { Bit.ZERO -> println("zero") }
+  when (s) { Shape.Circle -> println("circle") }   // s: a sealed type
+  when (true) { true -> println("true") }
+  ```
+
+  ```text
+  error: 'when' expression must be exhaustive. Add the 'ONE' branch or an 'else' branch.
+  error: 'when' expression must be exhaustive. Add the 'Square' branch or an 'else' branch.
+  error: 'when' expression must be exhaustive. Add the 'false' branch or an 'else' branch.
+  ```
+
+  So the real rule is about the **subject**, not about statement versus expression. This is
+  the behaviour you want from a sealed hierarchy — add a subtype and every `when` that must
+  handle it stops compiling — but only if you *don't* write `else`. An `else` on a sealed
+  subject silently absorbs future subtypes and throws that guarantee away.
+</Callout>
+
+A `when` over a non-null subject does not need a `null` branch, and one over a nullable
+subject does — `null` counts as a case.
+
+## error() as the else branch
+
+When no branch should ever be reached, `error()` says so and throws if it is. Because its
+type is `Nothing`, it satisfies exhaustiveness without widening the expression's type:
+
+```kotlin
+fun processUserRole(user: RoleUser) {
+    when (user.role) {
+        "admin" -> println("${user.name} is an admin.")
+        "editor" -> println("${user.name} is an editor.")
+        "viewer" -> println("${user.name} is a viewer.")
+        else -> error("Undefined role: ${user.role}")
+    }
+}
+
+processUserRole(RoleUser("Alice", "admin"))
+println(runCatching { processUserRole(RoleUser("Bob", "guest")) }.exceptionOrNull()?.let {
+    "${it::class.simpleName}: ${it.message}"
+})
+```
+
+```text
+Alice is an admin.
+IllegalStateException: Undefined role: guest
+```
+
+## On the JVM
+
+Compiling for JVM 21 or later, kotlinc emits a single `invokedynamic` type switch instead
+of a chain of `instanceof` checks when all of the following hold:
+
+- every condition except `else` is an `is` or `null` check;
+- there are no guard conditions;
+- no condition names a type that cannot be checked directly, such as `MutableList` or a
+  function type;
+- there are at least two conditions besides `else`;
+- all branches test the same subject.
+
+```kotlin
+fun countCorners(shape: Shape) = when (shape) {
+    is Circle -> 0
+    is Rectangle -> 4
+    is Triangle -> 3
+    else -> -1
+}
+
+println(listOf(Circle(), Rectangle(), Triangle()).map { countCorners(it) })
+```
+
+```text
+[0, 4, 3]
+```
+
+## Related
+
+- [if](/control-flow/conditional-expressions/if) — the two-branch form
+- [Conditional Expressions](/control-flow/conditional-expressions) — statement versus expression
+- [Sealed Class](/classes-and-objects/more-on-classes-and-objects/sealed-class) — what makes a `when` exhaustive
+- [Enum Class](/classes-and-objects/more-on-classes-and-objects/enum-class) — the other closed subject
+- [Ranges](/language-basics/ranges) — what `in 1..10` tests
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/when.kt" />
 
 import { Callout } from 'nextra/components'

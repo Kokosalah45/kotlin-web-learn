@@ -1,19 +1,327 @@
 ---
 title: "Scope Functions"
-description: "Scope Functions in Kotlin."
+description: "let, run, with, apply and also: which gives you this and which gives you it, what each returns, and takeIf/takeUnless."
 ---
 
 # Scope Functions
 
 <DocSource docs={["scope-functions"]} />
 
-The Kotlin standard library contains several functions whose sole purpose is to execute a block of code within the context of an object. When you call such a function on an object with a [lambda expression](https://kotlinlang.org/docs/lambdas.html) provided, it forms a temporary scope. In this scope, you can access the object without its name. Such functions are called _scope functions_. There are five of them: [`let`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/let.html), [`run`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/run.html) , [`with`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/with.html), [`apply`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/apply.html) , and [`also`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/also.html).
+Five standard-library functions exist only to run a block of code in the context of an
+object: `let`, `run`, `with`, `apply` and `also`. They add no capability — they are
+shorthand. Choosing between them comes down to exactly two questions: **is the object
+`this` or `it`**, and **does the call return the object or the block's result**.
+
+Outputs below come from running `examples/functions/scope-functions.kt`.
+
+## The table
+
+| Function | Object reference | Return value | Extension function |
+| :--- | :--- | :--- | :--- |
+| `let` | `it` | lambda result | yes |
+| `run` | `this` | lambda result | yes |
+| `run` | — | lambda result | no: called without a context object |
+| `with` | `this` | lambda result | no: takes the object as an argument |
+| `apply` | `this` | the context object | yes |
+| `also` | `it` | the context object | yes |
+
+And the official short guide to picking one:
+
+- executing a lambda on a non-nullable object — `let`
+- introducing an expression as a variable in local scope — `let`
+- object configuration — `apply`
+- object configuration *and* computing a result — `run`
+- running statements where an expression is required — non-extension `run`
+- additional effects — `also`
+- grouping function calls on an object — `with`
+
+## What each one returns
+
+The same object, the same block, five different answers:
+
+```kotlin
+val target = mutableListOf("one", "two", "three")
+println(target.let { it.size })
+println(target.run { size })
+println(with(target) { size })
+println(target.apply { add("four") })
+println(target.also { it.add("five") })
+```
+
+```text
+3
+3
+3
+[one, two, three, four]
+[one, two, three, four, five]
+```
+
+<Callout type="warning">
+  This is the mistake to watch for: `apply` and `also` return the **object**, so
+  `val n = list.apply { size }` gives you the list, not its size — and the compiler will
+  not complain if `n` is used somewhere an object is acceptable. If you want the block's
+  value, you want `let`, `run` or `with`.
+</Callout>
+
+## this or it
+
+`run`, `with` and `apply` expose the object as the lambda **receiver**, so its members are
+in scope unqualified. `let` and `also` pass it as an **argument** named `it`:
+
+```kotlin
+val str = "Hello"
+str.run { println("The string's length: $length") }
+str.let { println("The string's length is ${it.length}") }
+```
+
+```text
+The string's length: 5
+The string's length is 5
+```
+
+Prefer `this` when the block mostly reads or assigns the object's own members, and `it`
+when the object is mostly being handed to other functions, or when several variables are in
+play and a name helps.
+
+## let
+
+`let` is the one you reach for most, in three distinct roles.
+
+**Continuing a chain without a variable:**
+
+```kotlin
+val first = listOf("one", "two", "three", "four").first().let { firstItem ->
+    println("The first item of the list is '$firstItem'")
+    if (firstItem.length >= 5) firstItem else "!" + firstItem + "!"
+}.uppercase()
+println("First item after modifications: '$first'")
+```
+
+```text
+The first item of the list is 'one'
+First item after modifications: '!ONE!'
+```
+
+Naming the parameter (`firstItem`) instead of using `it` is worth doing as soon as the
+block is more than one line.
+
+**Running a block only on a non-null value**, via `?.let`:
+
+```kotlin
+val maybe: String? = "Hello"
+val length = maybe?.let {
+    println("let() called on $it")
+    processNonNullString(it)   // OK: `it` is not null inside `?.let { }`
+    it.length
+}
+println(length)
+
+val absent: String? = null
+println(absent?.let { it.length })
+```
+
+```text
+let() called on Hello
+processing 'Hello'
+5
+null
+```
+
+Note what the whole expression evaluates to when the receiver is null: `null`, because
+`?.` short-circuits before `let` runs.
+
+**Replacing a one-argument lambda with a reference:** `numbers.let(::println)`.
+
+## with and run
+
+`with` takes the object as an argument; `run` is the extension form of the same thing. Read
+`with` as "with this object, do the following":
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three")
+with(numbers) {
+    println("'with' is called with argument $this")
+    println("It contains $size elements")
+}
+val firstAndLast = with(numbers) {
+    "The first element is ${first()}," + " the last element is ${last()}"
+}
+println(firstAndLast)
+```
+
+```text
+'with' is called with argument [one, two, three]
+It contains 3 elements
+The first element is one, the last element is three
+```
+
+`run` suits a block that both configures and computes:
+
+```kotlin
+val service = MultiportService("https://example.kotlinlang.org", 80)
+val result = service.run {
+    port = 8080
+    query(prepareRequest() + " to port $port")
+}
+println(result)
+```
+
+```text
+Result for query 'Default request to port 8080'
+```
+
+The non-extension `run` has no context object at all. Its job is to let several statements
+stand where an expression is required, with the locals confined to the block:
+
+```kotlin
+val hexNumberRegex = run {
+    val digits = "0-9"
+    val hexDigits = "A-Fa-f"
+    val sign = "+-"
+    Regex("[$sign]?[$digits$hexDigits]+")
+}
+for (match in hexNumberRegex.findAll("+123 -FFFF !%*& 88 XYZ")) {
+    println(match.value)
+}
+```
+
+```text
++123
+-FFFF
+88
+```
+
+## apply and also
+
+`apply` configures and gives the object back, so it works as an initialiser:
+
+```kotlin
+val adam = Resident2("Adam", 0, "").apply {
+    age = 32
+    city = "London"
+}
+println(adam)
+```
+
+```text
+Resident2(name=Adam, age=32, city=London)
+```
+
+`also` does something *with* the object — log it, register it, hand it to another function
+— and gives it back untouched. Because both return the object, they chain as side steps:
+
+```kotlin
+val numberList = mutableListOf<Double>()
+numberList.also { println("Populating the list") }
+    .apply {
+        add(2.71)
+        add(3.14)
+        add(1.0)
+    }
+    .also { println("Sorting the list") }
+    .sort()
+println(numberList)
+```
+
+```text
+Populating the list
+Sorting the list
+[1.0, 2.71, 3.14]
+```
+
+`also` is also the clean way to add a side effect to a `return`:
+
+```kotlin
+fun doubledWithLog(n: Int): Int = (n * 2).also { writeToLog("doubled $n to $it") }
+println(doubledWithLog(21))
+```
+
+```text
+INFO: doubled 21 to 42
+42
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `also` exists mainly so you *don't* shadow the enclosing `this`. Inside `apply`, `this`
+  is the context object and the surrounding class's `this` needs a qualifier; inside `also`
+  the object is `it` and `this` still means what it did outside.
 </Callout>
+
+## takeIf and takeUnless
+
+Not scope functions, but they live on the same page because they combine with them.
+`takeIf` returns the object when the predicate holds and `null` otherwise; `takeUnless` is
+the negation:
+
+```kotlin
+val n = 42
+println(n.takeIf { it % 2 == 0 })
+println(n.takeUnless { it % 2 == 0 })
+println("Hello".takeIf { it.isNotEmpty() }?.uppercase())
+println("".takeIf { it.isNotEmpty() }?.uppercase())
+```
+
+```text
+42
+null
+HELLO
+null
+```
+
+The result is nullable, so anything chained after it needs `?.` — `str.takeIf { ... }.uppercase()`
+does not compile. Chained with `?.let`, it reads as a guard:
+
+```kotlin
+fun displaySubstringPosition(input: String, sub: String) {
+    input.indexOf(sub).takeIf { it >= 0 }?.let {
+        println("The substring $sub is found in $input.")
+        println("Its start position is $it.")
+    }
+}
+
+displaySubstringPosition("010000011", "11")
+displaySubstringPosition("010000011", "12")
+```
+
+```text
+The substring 11 is found in 010000011.
+Its start position is 7.
+```
+
+The second call prints nothing: `indexOf` returned `-1`, `takeIf` returned `null`, and
+`let` never ran.
+
+<Callout type="warning">
+  `takeIf` returns the object whenever the predicate is `true`, however empty or zero-like
+  that object is. Only the predicate decides:
+
+  ```kotlin
+  println(0.takeIf { it == 0 })
+  println(listOf<Int>().takeIf { it.isEmpty() })
+  println(false.takeIf { !it })
+  ```
+
+  ```text
+  0
+  []
+  false
+  ```
+
+  So `value.takeIf { ... } ?: fallback` uses the fallback only on a failed predicate — never
+  because the value itself looked falsy.
+</Callout>
+
+## Don't overdo it
+
+The official advice is worth repeating: scope functions make code concise, but nesting them
+or chaining several makes it very easy to lose track of what `this` and `it` currently
+refer to. One level is usually the right amount.
+
+## Related
+
+- [Lambda Functions](/functions/function-types/lambda-functions) — lambdas with a receiver, the mechanism behind `apply` and `run`
+- [Extension Functions](/functions/extension-functions) — all but `with` are extensions
+- [Higher-order Functions](/functions/function-types/higher-order-functions) — all of these are `inline`
+- [Nullability Check Operators](/null-safety/nullability-check-operators) — `?.let` and the Elvis operator
 
 import { Callout } from 'nextra/components'

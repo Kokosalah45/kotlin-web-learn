@@ -1,19 +1,193 @@
 ---
 title: "while"
-description: "while in Kotlin."
+description: "while and do-while, the one-guaranteed-pass difference, and the scoping quirk that lets do-while test a variable from its own body."
 ---
 
 # while
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+`while` and `do-while` repeat a block while a condition holds. The only difference is when
+the condition is checked: `while` before the body, `do-while` after — so a `do-while` body
+always runs at least once. `do-while` also has a scoping rule that no other construct in
+Kotlin has.
+
+Outputs below come from running `examples/control-flow/while.kt`.
+
+## while
+
+Condition first, so the body may never run:
+
+```kotlin
+var carsInGarage = 0
+val maxCapacity = 3
+while (carsInGarage < maxCapacity) {
+    println("Car entered. Cars now in garage: ${++carsInGarage}")
+}
+println("Garage is full!")
+```
+
+```text
+Car entered. Cars now in garage: 1
+Car entered. Cars now in garage: 2
+Car entered. Cars now in garage: 3
+Garage is full!
+```
+
+```kotlin
+var full = 3
+while (full < maxCapacity) {
+    println("this never prints")
+    full++
+}
+println("skipped the body entirely")
+```
+
+```text
+skipped the body entirely
+```
+
+## do-while
+
+Body first, condition after. Even a condition that is false from the start gets one pass:
+
+```kotlin
+var attempts = 0
+do {
+    attempts++
+    println("Attempt $attempts")
+} while (attempts < 0)
+println("attempts = $attempts")
+```
+
+```text
+Attempt 1
+attempts = 1
+```
+
+That is the whole reason `do-while` exists: "try, then decide whether to try again".
+
+```kotlin
+val rolls = listOf(2, 4, 6, 1)
+var index = 0
+var roll: Int
+do {
+    roll = rolls[index++]
+    println("Rolled a $roll")
+} while (roll != 6)
+println("Got a 6! Game over.")
+```
+
+```text
+Rolled a 2
+Rolled a 4
+Rolled a 6
+Got a 6! Game over.
+```
+
+Note `var roll: Int` declared *outside* the loop so the condition can read it — the usual
+pattern in most languages. In Kotlin you often don't need it:
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  A `do-while` condition can see variables declared in the loop **body**, which is unique
+  among Kotlin's scopes:
+
+  ```kotlin
+  var remaining = 5
+  do {
+      val half = remaining / 2
+      remaining = half
+  } while (half > 0)
+  println("remaining = $remaining")
+  ```
+
+  ```text
+  remaining = 0
+  ```
+
+  `half` is declared inside the braces and used in the condition outside them. The
+  specification makes the body's scope extend over the condition precisely so this works.
 </Callout>
+
+## while (true)
+
+With no numeric bound, `while (true)` plus
+[`break`](/control-flow/loops/break-and-continue) is the idiom — Kotlin has no `loop { }`
+keyword. The compiler's control-flow analysis understands it: a function with a declared
+return type whose body ends in an unconditional `while (true)` with no `break` needs no
+`return` statement at all, because the loop provably never completes.
+
+```kotlin
+var n = 0
+while (true) {
+    n++
+    if (n >= 3) break
+}
+println("n = $n")
+```
+
+```text
+n = 3
+```
+
+## Driving an iterator by hand
+
+What a `for` loop does for you:
+
+```kotlin
+val iterator = listOf("a", "b", "c").iterator()
+while (iterator.hasNext()) print(iterator.next())
+```
+
+```text
+abc
+```
+
+Worth writing out only when you need to call `next()` more than once per round, or to use a
+`MutableIterator`'s `remove()`.
+
+## When while is the right loop
+
+`while` wins when the number of iterations is not known in advance and depends on state the
+body changes — consuming input, converging on a value, or walking a number apart:
+
+```kotlin
+var value = 9402
+val digits = mutableListOf<Int>()
+while (value > 0) {
+    digits += value % 10
+    value /= 10
+}
+println(digits.reversed())
+```
+
+```text
+[9, 4, 0, 2]
+```
+
+<Callout type="warning">
+  Every `while` needs something in the body that eventually falsifies the condition, and a
+  `continue` placed before that something is an infinite loop. In a `for` loop the advance
+  is automatic and `continue` is safe; in a `while` loop it is yours to get right —
+  increment first, then `continue`. See
+  [break & continue](/control-flow/loops/break-and-continue).
+</Callout>
+
+Neither loop is an expression, so neither produces a value. A `while` that accumulates one
+is usually clearer as `fold`, `sumOf` or `generateSequence` — see
+[Loops](/control-flow/loops#when-not-to-write-a-loop).
+
+## Related
+
+- [for](/control-flow/loops/for) — iterating something with a known length
+- [break & continue](/control-flow/loops/break-and-continue) — leaving a `while (true)`
+- [Tail-recursive Functions](/functions/tail-recursive-functions) — what `tailrec` compiles into
+- [Sequences](/language-basics/sequences) — `generateSequence` instead of a `while`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/while.kt" />
 
 import { Callout } from 'nextra/components'

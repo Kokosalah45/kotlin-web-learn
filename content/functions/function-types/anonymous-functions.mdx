@@ -1,19 +1,172 @@
 ---
 title: "Anonymous Functions"
-description: "Anonymous Functions in Kotlin."
+description: "fun without a name: the one syntax that lets you state a lambda's return type, and the return semantics that differ from a lambda's."
 ---
 
 # Anonymous Functions
 
 <DocSource docs={["lambdas"]} />
 
-Kotlin functions are [first-class](https://en.wikipedia.org/wiki/First-class_function), which means they can be stored in variables and data structures, and can be passed as arguments to and returned from other higher-order functions. You can perform any operations on functions that are possible for other non-function values.
+An anonymous function is a function declaration with the name left out:
+`fun(x: Int, y: Int): Int = x + y`. It exists for two reasons a lambda cannot cover — you
+can write the return type down, and a `return` inside it means something different.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/functions/anonymous-functions.kt`.
+
+## Syntax
+
+Expression body or block body, same as a named function:
+
+```kotlin
+val addExpression = fun(x: Int, y: Int): Int = x + y
+val addBlock = fun(x: Int, y: Int): Int {
+    return x + y
+}
+println(addExpression(2, 3))
+println(addBlock(2, 3))
+```
+
+```text
+5
+5
+```
+
+The return type is the point. A lambda has no syntax for it at all:
+
+```kotlin
+val half = fun(x: Int): Double = x / 2.0
+println(half(5))
+println(half(5)::class.simpleName)
+```
+
+```text
+2.5
+Double
+```
+
+Parameter types can still be omitted when context supplies them:
+
+```kotlin
+val ints = listOf(-2, -1, 0, 1, 2)
+println(ints.filter(fun(item) = item > 0))
+```
+
+```text
+[1, 2]
+```
+
+Return-type inference follows the rules for named functions, so a **block** body infers
+nothing and defaults to `Unit`:
+
+```kotlin
+val logIt = fun(s: String) {
+    println("log: $s")
+}
+println(logIt("hello"))
+```
+
+```text
+log: hello
+kotlin.Unit
+```
+
+## return is local
+
+This is the real difference. A `return` returns from the nearest function declared with
+`fun` — and an anonymous function is one:
+
+```kotlin
+// Lambda: a bare `return` leaves the enclosing function (forEach is inline).
+fun lambdaReturn(): String {
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return "left lambdaReturn() at $it"
+        print(it)
+    }
+    return "finished the loop"
+}
+
+// Anonymous function: the same `return` leaves only the anonymous function.
+fun anonymousReturn(): String {
+    listOf(1, 2, 3, 4, 5).forEach(fun(value: Int) {
+        if (value == 3) return
+        print(value)
+    })
+    return "finished the loop"
+}
+
+println(lambdaReturn())
+println(anonymousReturn())
+```
+
+```text
+12left lambdaReturn() at 3
+1245finished the loop
+```
+
+<Callout type="warning">
+  Same loop, same condition, same keyword, different outcome. The lambda's `return`
+  abandoned `lambdaReturn()` after printing `12`; the anonymous function's `return` only
+  ended that one invocation, so `4` and `5` still printed and the function reached its last
+  line. If you want a lambda to behave like the second one, label the return —
+  `return@forEach` — as described under [return](/functions/standard-functions/return).
 </Callout>
+
+So an anonymous function's `return` behaves like `continue` in a loop, with no label needed.
+There is no `break` equivalent; for that, wrap the loop in `run loop@{ }` and return from
+the outer lambda non-locally.
+
+## They go inside the parentheses
+
+The trailing-lambda shorthand is for lambdas only:
+
+```kotlin
+println(ints.count(fun(n: Int) = n < 0))
+println(ints.count { it < 0 })
+```
+
+```text
+2
+2
+```
+
+`ints.count fun(n: Int) = n < 0` does not parse. That verbosity is most of the reason
+anonymous functions are rare in Kotlin code — a labelled return in a lambda achieves the
+same control flow with less syntax.
+
+## Anonymous extension functions
+
+The receiver can go in front of the parentheses, giving a function value of type
+`Order.(Double) -> Double`:
+
+```kotlin
+data class Order(val weight: Double)
+val calculateShipping = fun Order.(rate: Double): Double = this.weight * rate
+println(Order(2.5).calculateShipping(3.0))
+```
+
+```text
+7.5
+```
+
+This is the only syntax that states a receiver type *and* a return type in one place. The
+lambda equivalent moves the type to the variable:
+`val isInRange: Int.(min: Int, max: Int) -> Boolean = { min, max -> this in min..max }`.
+
+## Choosing
+
+| You need | Use |
+| :--- | :--- |
+| the common case | a [lambda](/functions/function-types/lambda-functions) |
+| an explicit return type | an anonymous function |
+| `return` to mean "this element only" | an anonymous function, or `return@label` in a lambda |
+| `return` to leave the whole function | a lambda passed to an [inline function](/functions/function-types/higher-order-functions) |
+| the trailing-brace call style | a lambda — anonymous functions cannot |
+
+## Related
+
+- [Lambda Functions](/functions/function-types/lambda-functions) — the shorter alternative
+- [return](/functions/standard-functions/return) — labels and non-local return
+- [Function Types](/functions/function-types) — the type both forms produce
+- [Extension Functions](/functions/extension-functions) — named extensions
 
 import { Callout } from 'nextra/components'

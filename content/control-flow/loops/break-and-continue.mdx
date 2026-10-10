@@ -1,19 +1,251 @@
 ---
 title: "break & continue"
-description: "break & continue in Kotlin."
+description: "break and continue target the nearest loop, what continue does in a do-while, and why neither works inside forEach."
 ---
 
 # break & continue
 
 <DocSource docs={["returns"]} />
 
-The type of these expressions is the [Nothing type](https://kotlinlang.org/docs/exceptions.html).
+`break` terminates the nearest enclosing loop; `continue` jumps to its next step. Both are
+expressions of type `Nothing`. Two things catch people: "nearest enclosing loop" means a
+`when` inside a loop does **not** capture them, and `continue` in a `do-while` jumps to the
+condition, not to the top of the body.
+
+Outputs below come from running `examples/control-flow/break-and-continue.kt`.
+
+## The basics
+
+```kotlin
+for (i in 1..10) {
+    if (i > 4) break
+    print(i)
+}
+```
+
+```text
+1234
+```
+
+```kotlin
+for (i in 1..10) {
+    if (i % 2 == 0) continue
+    print(i)
+}
+```
+
+```text
+13579
+```
+
+## Nearest enclosing loop
+
+Both affect the innermost loop only. With `break`, each outer iteration restarts the inner
+loop and exits again:
+
+```kotlin
+for (i in 1..3) {
+    for (j in 1..3) {
+        if (j == 2) break
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 21 31 
+```
+
+With `continue`, the inner loop keeps going, just skipping `j == 2`:
+
+```kotlin
+for (i in 1..3) {
+    for (j in 1..3) {
+        if (j == 2) continue
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 13 21 23 31 33 
+```
+
+To target an outer loop, label it — see [Label Loops](/control-flow/loops/label-loops).
+
+## break inside when
+
+A `when` is not a loop, so `break` in a `when` branch breaks the **loop**:
+
+```kotlin
+for (n in listOf(1, 2, 3, 4)) {
+    when (n) {
+        3 -> break
+        else -> print(n)
+    }
+}
+```
+
+```text
+12
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  If you come from Java or C, note that a `when` branch needs no `break` to stop
+  fall-through — there is none. A `break` written in a `when` branch always refers to the
+  enclosing loop, and a `when` with no enclosing loop cannot contain one at all.
 </Callout>
+
+## continue in a while loop
+
+In a `for` loop the advance is automatic. In a `while` loop it is in the body, so a
+`continue` placed before it loops forever:
+
+```kotlin
+var i = 0
+var skipped = 0
+while (i < 6) {
+    i++                 // increment FIRST
+    if (i % 2 == 0) {
+        skipped++
+        continue
+    }
+    print(i)
+}
+println(" (skipped $skipped)")
+```
+
+```text
+135 (skipped 3)
+```
+
+<Callout type="warning">
+  Move the `i++` after the `continue` and this becomes an infinite loop with no warning from
+  the compiler. Any `continue` in a `while` body has to be downstream of whatever makes
+  progress.
+</Callout>
+
+`do-while` differs again: `continue` jumps to the **condition**, which then decides whether
+to re-enter the body:
+
+```kotlin
+var k = 0
+do {
+    k++
+    if (k < 3) continue
+    print("body-tail-at-$k ")
+} while (k < 5)
+```
+
+```text
+body-tail-at-3 body-tail-at-4 body-tail-at-5 
+```
+
+The first two rounds `continue` past the `print`, the condition is still true, and the loop
+re-enters — so the condition is checked five times, not skipped.
+
+## They are expressions
+
+Having type `Nothing` means they fit anywhere a value is expected, which makes a
+continue-on-condition read as part of the assignment:
+
+```kotlin
+for (n in 1..5) {
+    val doubled = if (n == 3) continue else n * 2
+    print("$doubled ")
+}
+```
+
+```text
+2 4 8 10 
+```
+
+## Neither works inside forEach
+
+`forEach` is a function, not a loop, so there is no loop for `break` to break:
+
+```kotlin
+run loop@{
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return@loop
+        print(it)
+    }
+    print(" never reached")
+}
+println(" done with nested loop")
+```
+
+```text
+12 done with nested loop
+```
+
+The `run loop@{ }` wrapper gives the `return` something to leave, which is the documented
+way to simulate `break` out of a lambda. For `continue`, `return@forEach` is enough.
+
+<Callout type="info">
+  `break` and `continue` *do* work in a lambda passed to an
+  [inline function](/functions/function-types/higher-order-functions) when a loop encloses
+  that call — `val n = value ?: run { continue }` inside a `for` loop is legal. What never
+  works is `break` reaching outward through `forEach` itself, because `forEach` *is* the
+  iteration.
+</Callout>
+
+## Often you want return, or no jump at all
+
+Inside a function, `return` is clearer than `break` plus a flag:
+
+```kotlin
+fun firstFactorOf(n: Int): Int {
+    for (i in 2..n) {
+        if (n % i == 0) return i
+    }
+    return n
+}
+
+println(firstFactorOf(91))
+println(firstFactorOf(97))
+```
+
+```text
+7
+97
+```
+
+And a loop whose only job is to stop at a condition usually has a name in the standard
+library:
+
+```kotlin
+val numbers = listOf(4, 8, 15, 16, 23, 42)
+println(numbers.takeWhile { it < 16 })
+println(numbers.dropWhile { it < 16 })
+println(numbers.filterNot { it % 2 == 0 })
+println(numbers.first { it > 10 })
+println(numbers.any { it > 40 })
+```
+
+```text
+[4, 8, 15]
+[16, 23, 42]
+[15, 23]
+15
+true
+```
+
+`first { }` stops at the first match, `any { }` stops at the first `true`, and
+`takeWhile { }` stops at the first failure — all of them a `break` you do not have to
+write.
+
+## Related
+
+- [Label Loops](/control-flow/loops/label-loops) — `break@outer` and `continue@outer`
+- [return](/functions/standard-functions/return) — local and non-local return
+- [for](/control-flow/loops/for) / [while](/control-flow/loops/while) — the loops themselves
+- [Filtering](/collection-operations/filtering) — `takeWhile`, `any`, `first`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/break-and-continue.kt" />
 
 import { Callout } from 'nextra/components'

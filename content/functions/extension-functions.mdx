@@ -1,19 +1,282 @@
 ---
 title: "Extension Functions"
-description: "Extension Functions in Kotlin."
+description: "Adding functions and properties to types you do not own, nullable receivers, and the static dispatch that catches everyone."
 ---
 
 # Extension Functions
 
 <DocSource docs={["extensions"]} />
 
-Kotlin _extensions_ let you extend a class or an interface with new functionality without using inheritance or design patterns like _Decorator_. They are useful when working with third-party libraries you can't modify directly. Once created, you call these extensions as if they were members of the original class or interface.
+An extension lets you call a new function on an existing type as though it were a member.
+Nothing is added to the class — the extension is a plain static function with the receiver
+as its first argument, which is the single fact that explains every surprise below: they
+are **dispatched statically**, they **lose** to members, and they cannot see `private`
+state.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/functions/extension-functions.kt`.
+
+## Declaring one
+
+Prefix the name with the receiver type and a dot. Inside the body, `this` is the receiver
+and can be omitted:
+
+```kotlin
+fun String.truncate(maxLength: Int): String {
+    return if (this.length <= maxLength) this else take(maxLength - 3) + "..."
+}
+
+println("KotlinFan42".truncate(15))
+println("JetBrainsLoverForever".truncate(15))
+```
+
+```text
+KotlinFan42
+JetBrainsLov...
+```
+
+`take(...)` with no qualifier is `this.take(...)`. Much of the standard library is built
+this way — `appendLine` on `StringBuilder`, `map` and `filter` on `Iterable`:
+
+```kotlin
+val builder = StringBuilder()
+    .appendLine("Hello")
+    .appendLine()
+    .appendLine("World")
+print(builder.toString())
+```
+
+```text
+Hello
+
+World
+```
+
+The receiver can be an **interface**, which adds behaviour to every implementation at once:
+
+```kotlin
+interface SiteUser {
+    val name: String
+    val email: String
+}
+
+fun SiteUser.displayInfo(): String = "User(name=$name, email=$email)"
+
+println(RegularUser("Alice", "alice@example.com").displayInfo())
+```
+
+```text
+User(name=Alice, email=alice@example.com)
+```
+
+## Generic and parameterised receivers
+
+Declare the type parameter before the function name so it is in scope for the receiver type:
+
+```kotlin
+fun <T> List<T>.endpoints(): Pair<T, T> = first() to last()
+fun Map<String, Int>.mostVoted(): String? = maxByOrNull { (_, value) -> value }?.key
+
+println(mapOf("Cats" to 37, "Dogs" to 58, "Birds" to 22).mostVoted())
+println(emptyMap<String, Int>().mostVoted())
+println(listOf("Paris", "London", "Berlin", "Prague").endpoints())
+println(listOf(21.0, 19.5, 22.3).endpoints())
+```
+
+```text
+Dogs
+null
+(Paris, Prague)
+(21.0, 22.3)
+```
+
+`Map<String, Int>` as a receiver means the extension is only offered on maps with those
+type arguments — a precision members cannot express.
+
+## Nullable receivers
+
+A receiver type may be nullable, and then `this` can be `null` inside the body. The call
+site needs no `?.`:
+
+```kotlin
+fun Any?.describeOrNull(): String {
+    if (this == null) return "null"
+    return "${this::class.simpleName}($this)"
+}
+
+val number: Int? = 42
+val nothing: Any? = null
+println(number.describeOrNull())
+println(nothing.describeOrNull())
+```
+
+```text
+Int(42)
+null
+```
+
+After the `this == null` check, `this` is smart-cast to the non-nullable type. This is how
+`toString()` on a nullable value prints `"null"` instead of throwing.
+
+## Extensions are dispatched statically
+
+The one that costs people an afternoon:
+
+```kotlin
+open class Shape2
+class Rectangle2 : Shape2()
+
+fun Shape2.getName() = "Shape2"
+fun Rectangle2.getName() = "Rectangle2"
+
+fun printShapeName(shape: Shape2) {
+    println(shape.getName())
+}
+
+printShapeName(Rectangle2())
+println(Rectangle2().getName())
+val asShape: Shape2 = Rectangle2()
+println(asShape.getName())
+```
+
+```text
+Shape2
+Rectangle2
+Shape2
+```
+
+<Callout type="warning">
+  The same `Rectangle2()` instance resolves to two different functions depending only on
+  the **declared type** of the expression it is reached through. `printShapeName` takes a
+  `Shape2`, so it calls `Shape2.getName()` — the runtime type is never consulted. This is
+  the opposite of [member functions](/functions/member-functions), where dispatch is
+  virtual. Never model polymorphic behaviour with extensions.
 </Callout>
+
+And where a member and an extension both match, the member wins — see
+[Member Functions](/functions/member-functions#members-beat-extensions) for the warning
+kotlinc emits.
+
+## Extension properties
+
+Same idea with a property, and one hard restriction:
+
+```kotlin
+data class Resident(val firstName: String, val lastName: String)
+
+val Resident.emailUsername: String
+    get() = "${firstName.lowercase()}.${lastName.lowercase()}"
+
+println(Resident("Mickey", "Mouse").emailUsername)
+```
+
+```text
+mickey.mouse
+```
+
+<Callout type="warning">
+  An extension property **cannot have an initialiser** — `var House.number = 1` fails with
+  `Initializers are not allowed for extension properties`. There is nowhere to put a
+  backing field, because nothing was added to the class. You must write the accessors, and
+  store any state yourself:
+
+  ```kotlin
+  val houseNumbers = mutableMapOf<House, Int>()
+  var House.number: Int
+      get() = houseNumbers[this] ?: 1
+      set(value) {
+          println("Setting house number for ${this.streetName} to $value")
+          houseNumbers[this] = value
+      }
+  ```
+
+  ```text
+  Default number: 1 Maple Street
+  Setting house number for Maple Street to 99
+  Updated number: 99 Maple Street
+  ```
+</Callout>
+
+## Companion objects and member extensions
+
+A companion object can be extended too, and the call then looks like a static method:
+
+```kotlin
+class Logger { companion object }
+
+fun Logger.Companion.logStartupMessage() {
+    println("Application started.")
+}
+
+Logger.logStartupMessage()
+```
+
+```text
+Application started.
+```
+
+An extension declared **inside** another class has two implicit receivers: the extension
+receiver (its declared type) and the dispatch receiver (the enclosing class). Both are in
+scope unqualified:
+
+```kotlin
+class Connection(val host: Host, val port: Int) {
+    fun printPort() { print(port) }
+
+    // Host is the extension receiver, Connection the dispatch receiver.
+    fun Host.printConnectionString() {
+        printHostname() // Host.printHostname()
+        print(":")
+        printPort()     // Connection.printPort()
+        println()
+    }
+
+    fun connect() {
+        host.printConnectionString()
+    }
+}
+
+Connection(Host("kotl.in"), 443).connect()
+```
+
+```text
+kotl.in:443
+```
+
+The extension is not visible outside `Connection`. If both receivers have a member of the
+same name the extension receiver wins; reach the other with `this@Connection`.
+
+## Visibility
+
+An extension has the visibility of the scope it is declared in, and the access rights of
+that scope — not of the receiver. A top-level extension can use other `private` top-level
+declarations in the same file:
+
+```kotlin
+private fun removeWhitespace(input: String): String = input.replace("\\s".toRegex(), "")
+
+fun String.cleaned(): String = removeWhitespace(this)
+
+val rawEmail = "  user @example. com  "
+println("Raw:     '$rawEmail'")
+println("Cleaned: '${rawEmail.cleaned()}'")
+```
+
+```text
+Raw:     '  user @example. com  '
+Cleaned: 'user@example.com'
+```
+
+But it cannot touch the receiver's `private` or `protected` members — only its public API.
+That is the honest limit of "extend a class you don't own".
+
+Extensions are usually declared at the top level under a package, and must be **imported**
+at the call site to be used from another package.
+
+## Related
+
+- [Member Functions](/functions/member-functions) — virtual dispatch, and why members win
+- [Scope Functions](/functions/scope-functions) — `let`, `apply` and friends are extensions
+- [Properties](/classes-and-objects/class-members/properties) — accessors and backing fields
+- [Extension Functions](/classes-and-objects/extension-functions) — the same node under Classes & Objects
 
 import { Callout } from 'nextra/components'

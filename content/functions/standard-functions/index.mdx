@@ -1,18 +1,190 @@
 ---
 title: "Standard functions"
-description: "Standard functions in Kotlin."
+description: "Declaring functions with fun: block vs single-expression bodies, inferred return types, Unit, generics and infix notation."
 ---
 
 # Standard functions
 
 <DocSource docs={["functions"]} />
 
-Kotlin's documentation for **Standard functions** lives outside the
-[kotlin-web-site](https://github.com/JetBrains/kotlin-web-site) repository, so there is
-no summary to quote here. Follow the official sources above.
+A function declaration is the `fun` keyword, a name, a parenthesised parameter list, and
+optionally a return type. The one rule that catches everybody is that **a block body never
+infers its return type** — only a single-expression body does.
+
+Outputs below come from running `examples/functions/standard-functions.kt`.
+
+## Block body or single expression
+
+With curly braces you must write the return type out. With `=` you usually don't have to:
+
+```kotlin
+// Block body: the return type is never inferred, so it has to be written out.
+fun double(x: Int): Int {
+    return 2 * x
+}
+
+// Single-expression body: the return type IS inferred.
+fun triple(x: Int) = 3 * x
+
+// ...but an inferred type may not be the one you wanted.
+fun halfAsNumber(x: Int): Number = x / 2.0
+```
+
+```text
+10
+15
+2.5
+```
 
 <Callout type="info">
-  This page has not been expanded yet. The links above are authoritative.
+  Kotlin deliberately refuses to infer a block body's return type: control flow in a block
+  can be complex enough that the type would be unclear to a reader even when the compiler
+  could work it out. A single expression has nowhere to hide, so inference is allowed there.
 </Callout>
+
+Inference is not always what you want. `fun double(x: Int) = x * 2` infers `Int`; if callers
+need a `Number`, say so explicitly. The compiler also cannot infer a type for recursive or
+mutually recursive functions, for typeless expressions like `fun empty() = null`, or for an
+expression body containing a `return` — all of those need the type written out.
+
+## Parameters and trailing commas
+
+Parameters use Pascal notation, `name: Type`, each with an explicit type, separated by
+commas. A trailing comma is allowed and makes reordering a one-line diff:
+
+```kotlin
+fun powerOf(
+    number: Int,
+    exponent: Int, // trailing comma
+): Int = Math.pow(number.toDouble(), exponent.toDouble()).toInt()
+```
+
+```text
+1024
+```
+
+Defaults, named arguments and the rest live on [parameters](/functions/standard-functions/parameters).
+
+## Unit is a real type
+
+A block body with no declared return type returns `Unit`. Unlike `void`, `Unit` is an
+ordinary type with exactly one instance, so you can assign it, print it and compare it:
+
+```kotlin
+fun shout(text: String) {
+    println(text.uppercase())
+}
+
+shout("hello")
+val result = shout("again")
+println(result)
+println(result == Unit)
+println(shout("x") === shout("y"))
+```
+
+```text
+HELLO
+AGAIN
+kotlin.Unit
+true
+X
+Y
+true
+```
+
+The last line prints `X` and `Y` first — both calls run — and then `true`, because both
+returned the same single `Unit` object. That is why functions that only do something and
+functions that compute something share one type model, and why `() -> Unit` is a usable
+function type.
+
+<Callout type="warning">
+  `Unit` is optional in a declaration but **mandatory in a function type**: `() -> Unit`
+  cannot be shortened to `()`.
+</Callout>
+
+## Generic functions
+
+Type parameters go in angle brackets before the name:
+
+```kotlin
+fun <T> firstOrLabel(items: List<T>, label: T): T = items.firstOrNull() ?: label
+
+println(firstOrLabel(listOf("a", "b"), "none"))
+println(firstOrLabel(emptyList<String>(), "none"))
+```
+
+```text
+a
+none
+```
+
+## Infix notation
+
+An `infix` function can be called without the dot and parentheses. It must be a member or
+an extension function, take exactly one parameter, and that parameter may not be `vararg`
+or have a default:
+
+```kotlin
+class MyStringCollection {
+    val items = mutableListOf<String>()
+
+    infix fun add(s: String) {
+        println("Adding: $s")
+        items += s
+    }
+
+    fun build() {
+        add("first")      // ordinary call
+        this add "second" // infix call, explicit receiver required
+    }
+
+    fun printAll() = println("Items = $items")
+}
+```
+
+```text
+Adding: first
+Adding: second
+Items = [first, second]
+```
+
+Note the `this` in `this add "second"`. An infix call always needs both the receiver and
+the argument spelled out, so calling an infix member on the current instance requires an
+explicit `this`.
+
+<Callout type="warning">
+  Infix calls bind **looser than arithmetic**. With `infix fun Int.timesPlus(x: Int) = this * x + x`:
+
+  ```kotlin
+  println(1 timesPlus 2 + 3)
+  println(1 timesPlus (2 + 3))
+  println((1 timesPlus 2) + 3)
+  ```
+
+  ```text
+  10
+  10
+  7
+  ```
+
+  `1 timesPlus 2 + 3` is `1 timesPlus (2 + 3)`, not `(1 timesPlus 2) + 3`. Infix calls also
+  bind looser than type casts and `..`, but *tighter* than `&&`, `||`, `is` and `in`.
+</Callout>
+
+## Where a function can live
+
+Kotlin has no requirement that a function belong to a class. A function can be declared
+
+- at the top level of a file, directly under a package;
+- inside another function — see [local functions](/functions/local-functions);
+- inside a class or object — see [member functions](/functions/member-functions);
+- on a type you do not own — see [extension functions](/functions/extension-functions).
+
+## Related
+
+- [parameters](/functions/standard-functions/parameters) — defaults, named arguments, lazy evaluation
+- [return](/functions/standard-functions/return) — return types, `Nothing`, returning several values
+- [varargs](/functions/standard-functions/varargs) — a variable number of arguments
+- [Function Types](/functions/function-types) — functions as values
 
 import { Callout } from 'nextra/components'

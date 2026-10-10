@@ -1,18 +1,180 @@
 ---
 title: "Tail-recursive Functions"
-description: "Tail-recursive Functions in Kotlin."
+description: "The tailrec modifier, the conditions it requires, and what the stack does with and without it."
 ---
 
 # Tail-recursive Functions
 
 <DocSource docs={["functions"]} />
 
-Kotlin's documentation for **Tail-recursive Functions** lives outside the
-[kotlin-web-site](https://github.com/JetBrains/kotlin-web-site) repository, so there is
-no summary to quote here. Follow the official sources above.
+Mark a function `tailrec` and — if its self-call really is the last thing it does — the
+compiler rewrites the recursion into a loop. The modifier is not a hint: either the
+conditions hold and you get a loop, or the compiler warns and you still get ordinary
+recursion. So `tailrec` is worth adding exactly when you would otherwise worry about stack
+depth.
+
+Outputs below come from running `examples/functions/tail-recursive-functions.kt`.
+
+## With and without
+
+Two functions of identical shape, one marked:
+
+```kotlin
+// Ordinary recursion: one JVM frame per call.
+fun countDown(n: Int): Int = if (n == 0) 0 else countDown(n - 1)
+
+// Same shape, but the self-call is the whole body, so `tailrec` applies.
+tailrec fun countDownTail(n: Int): Int = if (n == 0) 0 else countDownTail(n - 1)
+
+println(runCatching { countDown(100_000) }.exceptionOrNull()?.let { it::class.simpleName })
+println(countDownTail(100_000))
+println(countDownTail(10_000_000))
+```
+
+```text
+StackOverflowError
+0
+0
+```
+
+One hundred thousand frames is already too many on a default JVM stack; ten million
+iterations of the rewritten loop costs nothing.
+
+<Callout type="warning">
+  `StackOverflowError` is an `Error`, not an `Exception`. `runCatching` catches it here
+  because it catches `Throwable`, but a `catch (e: Exception)` would not — and recovering
+  from a blown stack is not something to design around. Add `tailrec` instead.
+</Callout>
+
+## The accumulator pattern
+
+`tailrec` only applies when the self-call is the *final operation*. The usual naive
+factorial is therefore not tail-recursive — the multiplication happens after the call
+returns:
+
+```kotlin
+// NOT a tail call: the multiplication happens after the recursive call returns.
+fun factorial(n: Long): Long = if (n <= 1L) 1L else n * factorial(n - 1)
+```
+
+Carrying the result along in a parameter fixes that, and a default value keeps the call
+site unchanged:
+
+```kotlin
+tailrec fun factorialTail(n: Long, acc: Long = 1L): Long =
+    if (n <= 1L) acc else factorialTail(n - 1, acc * n)
+
+tailrec fun sumTo(n: Long, acc: Long = 0): Long = if (n == 0L) acc else sumTo(n - 1, acc + n)
+
+println(sumTo(1_000_000))
+println(factorialTail(20))
+println(factorial(20))
+```
+
+```text
+500000500000
+2432902008176640000
+2432902008176640000
+```
+
+Both factorials agree; only one of them survives a large `n`.
+
+## When tailrec does not apply
+
+`tailrec` requires the recursive call to be the last operation. Marking `factorial` anyway
+compiles — with two warnings naming the problem precisely:
+
+```text
+warning: a function is marked as tail-recursive but no tail calls are found.
+warning: recursive call is not a tail call.
+```
+
+A call inside `try`, `catch` or `finally` is rejected for the same reason — the block has
+to stay on the stack to do its job:
+
+```kotlin
+tailrec fun inFinally(n: Int): Int {
+    try {
+        if (n == 0) return 0
+        return inFinally(n - 1)
+    } finally {
+        // nothing
+    }
+}
+```
+
+```text
+warning: a function is marked as tail-recursive but no tail calls are found.
+warning: tail recursion optimization inside try/catch/finally is not supported.
+```
+
+An empty `finally` changes nothing — the restriction is syntactic.
+
+`open` is the one case that is a hard error rather than a warning, since an override could
+break the assumption:
+
+```text
+error: tailrec is prohibited on open members.
+```
+
+<Callout type="warning">
+  Everything except `open` is a **warning**. `tailrec fun inFinally` above builds, runs, and
+  then throws `StackOverflowError` at `inFinally(200_000)` exactly as if the modifier were
+  not there. If your build does not fail on warnings, a `tailrec` that stopped applying — say
+  because someone wrapped the body in a `try` — will reach production looking optimised.
+</Callout>
+
+## The fixed point of cosine
+
+The official page's example iterates `cos` until it stops moving:
+
+```kotlin
+import kotlin.math.abs
+import kotlin.math.cos
+
+// An arbitrary "good enough" precision
+val eps = 1E-10
+
+tailrec fun findFixPoint(x: Double = 1.0): Double =
+    if (abs(x - cos(x)) < eps) x else findFixPoint(cos(x))
+
+// The loop the compiler rewrites the above into.
+fun findFixPointByLoop(): Double {
+    var x = 1.0
+    while (true) {
+        val y = cos(x)
+        if (abs(x - y) < eps) return x
+        x = cos(x)
+    }
+}
+
+println(findFixPoint())
+println(findFixPointByLoop())
+println(findFixPoint() == findFixPointByLoop())
+```
+
+```text
+0.7390851331706995
+0.7390851331706995
+true
+```
+
+The two forms agree bit for bit, which is the point: `tailrec` changes the generated code,
+not the arithmetic.
 
 <Callout type="info">
-  This page has not been expanded yet. The links above are authoritative.
+  kotlinlang.org quotes `0.7390851332151611` for this snippet; on Kotlin 2.4.21 / JDK 17 it
+  returns `0.7390851331706995`. Neither is wrong. The loop stops as soon as a single step
+  moves less than `eps`, so the digits past the tolerance depend on where it happened to
+  stop, not on the true value of the Dottie number. If you need a specific precision,
+  compare successive iterates rather than trusting the trailing digits.
 </Callout>
+
+## Related
+
+- [Standard functions](/functions/standard-functions) — declaration syntax
+- [while](/control-flow/loops/while) — what `tailrec` compiles into
+- [Local Functions](/functions/local-functions) — `tailrec` works there too
+- [return](/functions/standard-functions/return) — `return` and the `Nothing` type
 
 import { Callout } from 'nextra/components'

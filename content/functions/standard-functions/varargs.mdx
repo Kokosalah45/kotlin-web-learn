@@ -1,18 +1,160 @@
 ---
 title: "varargs"
-description: "varargs in Kotlin."
+description: "The vararg modifier, what the parameter actually is inside the function, and the spread operator."
 ---
 
 # varargs
 
 <DocSource docs={["functions"]} />
 
-Kotlin's documentation for **varargs** lives outside the
-[kotlin-web-site](https://github.com/JetBrains/kotlin-web-site) repository, so there is
-no summary to quote here. Follow the official sources above.
+Mark one parameter `vararg` and callers may pass any number of arguments for it. Inside the
+function that parameter **is an array** — which is where the two things people get wrong
+come from: you cannot pass a list to it, and the array you get is not the caller's array.
+
+Outputs below come from running `examples/functions/varargs.kt`.
+
+## Declaring and calling
+
+```kotlin
+fun <T> asList(vararg ts: T): List<T> {
+    val result = ArrayList<T>()
+    for (t in ts) // ts is an Array<out T>
+        result.add(t)
+    return result
+}
+
+println(asList(1, 2, 3))
+println(asList<String>())
+```
+
+```text
+[1, 2, 3]
+[]
+```
+
+Zero arguments is a valid call and gives an empty array, so a `vararg` parameter never
+needs a default.
+
+Only **one** parameter can be `vararg`. It is usually last; if it is not, every parameter
+after it must be passed by name:
+
+```kotlin
+// A vararg that is not last: everything after it must be named at the call site.
+fun tag(vararg values: Int, label: String): String = "$label${values.toList()}"
+
+println(tag(1, 2, 3, label = "ids="))
+```
+
+```text
+ids=[1, 2, 3]
+```
+
+(A trailing function-typed parameter is the exception — it can still be passed as a
+[trailing lambda](/functions/function-types/lambda-functions).)
+
+To pass a `vararg` by name, pass an array:
+
+```kotlin
+fun mergeStrings(vararg strings: String): String = strings.joinToString("-")
+
+println(mergeStrings("a", "b", "c"))
+println(mergeStrings(strings = arrayOf("a", "b", "c")))
+```
+
+```text
+a-b-c
+a-b-c
+```
+
+## The spread operator
+
+`*` spreads an existing array into the argument list, and can be mixed with ordinary
+arguments:
+
+```kotlin
+val a = arrayOf(1, 2, 3)
+println(asList(-1, 0, *a, 4))
+```
+
+```text
+[-1, 0, 1, 2, 3, 4]
+```
+
+A primitive array is not an `Array<T>`, so it has to be converted first:
+
+```kotlin
+val primitives = intArrayOf(1, 2, 3)
+println(asList(-1, 0, *primitives.toTypedArray(), 4))
+```
+
+```text
+[-1, 0, 1, 2, 3, 4]
+```
 
 <Callout type="info">
-  This page has not been expanded yet. The links above are authoritative.
+  `vararg ts: Int` is a different case: it compiles to an `IntArray`, so an `IntArray`
+  spreads straight into it with no conversion.
+
+  ```kotlin
+  fun describeVararg(vararg ts: Int) {
+      println("${ts::class.simpleName} of size ${ts.size}")
+  }
+
+  describeVararg(1, 2, 3)
+  describeVararg(*primitives)
+  ```
+
+  ```text
+  IntArray of size 3
+  IntArray of size 3
+  ```
+
+  `toTypedArray()` is only needed when the parameter is a *generic* or reference-typed
+  `vararg`, where the array is an `Array<T>`.
 </Callout>
+
+## The spread operator copies
+
+This is worth knowing before you rely on it either way:
+
+```kotlin
+// Does the spread operator hand the function the caller's array, or a copy?
+fun clobber(vararg ts: Int) {
+    ts[0] = -999
+}
+
+val mine = intArrayOf(1, 2, 3)
+clobber(*mine)
+println(mine.toList())
+```
+
+```text
+[1, 2, 3]
+```
+
+<Callout type="warning">
+  `*mine` passes a **copy**, so `clobber` writing to `ts[0]` leaves `mine` untouched. Good
+  news for safety, but it means spreading a large array in a hot loop allocates, and it
+  means a `vararg` function can never be used to modify the caller's array in place.
+</Callout>
+
+## No list spreading
+
+There is no `*someList`. A `vararg` parameter is an array, and a `List` is not one, so
+converting is on you:
+
+```kotlin
+val xs = listOf(1, 2, 3)
+asList(*xs.toTypedArray())
+```
+
+That conversion allocates too, which is the usual argument for declaring the parameter
+`Collection<T>` rather than `vararg` when callers are likely to already have a collection.
+
+## Related
+
+- [parameters](/functions/standard-functions/parameters) — defaults and named arguments
+- [Arrays](/language-basics/basic-types/arrays) — `Array<T>` versus `IntArray` and friends
+- [Standard functions](/functions/standard-functions) — the rest of the declaration syntax
 
 import { Callout } from 'nextra/components'

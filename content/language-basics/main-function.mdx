@@ -1,19 +1,146 @@
 ---
 title: "main Function"
-description: "main Function in Kotlin."
+description: "The two shapes of main, the class it compiles to, command-line arguments, exit codes, and suspend main."
 ---
 
 # main Function
 
 <DocSource docs={["basic-syntax"]} />
 
-This is a collection of basic syntax elements with examples. At the end of every section, you'll find a link to a detailed description of the related topic.
+`main` is the entry point of a Kotlin application, and it is an ordinary top-level
+function — no class, no `static`, no `public`. The compiler generates the class the JVM
+needs, which is why the name you pass to `java` is derived from the **file name** rather
+than from anything you wrote.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/language-basics/main-function.kt`.
+
+## The two shapes
+
+```kotlin
+fun main() {
+    println("Hello world!")
+}
+```
+
+```text
+Hello world!
+```
+
+```kotlin
+fun main(args: Array<String>) {
+    println(args.contentToString())
+    println("count: ${args.size}")
+    if (args.isNotEmpty()) println("first: ${args.first()}")
+}
+```
+
+```text
+[]
+count: 0
+[one, two]
+count: 2
+first: one
+```
+
+Note `args.contentToString()` rather than `args.toString()` — see
+[Arrays](/language-basics/basic-types/arrays#tostring-does-the-wrong-thing-too). There is
+no `argv[0]`-style program name: `args` contains only the arguments.
+
+Only one `main` per file, and only one of the two shapes.
+
+## The class it compiles to
+
+A top-level function lives on a synthetic **file facade** class named after the file:
+
+```kotlin
+println(object {}.javaClass.enclosingClass?.name)
+```
+
+```text
+examples.languagebasics.Main_functionKt
+```
+
+<Callout type="warning">
+  The rule is: capitalise the first character, replace every character that is not valid in
+  a Java identifier with `_`, and append `Kt`. So `main-function.kt` becomes
+  `Main_functionKt` — **not** `MainFunctionKt`. That is the name `java -cp ...` needs, and
+  the reason a hyphen in a file name trips up hand-written run commands. Override it with
+  `@file:JvmName("Whatever")`.
 </Callout>
+
+## main is an ordinary function
+
+Nothing about it is special to the language — you can reference it, pass it around and call
+it yourself:
+
+```kotlin
+println(::helloWorld.name)
+val entry: () -> Unit = ::helloWorld
+entry()
+```
+
+```text
+helloWorld
+Hello world!
+```
+
+Which also means `main` can be `private`, can have a body that is a single expression, and
+can call other `main`-shaped functions directly — useful for testing a program's entry
+logic.
+
+## Exit codes
+
+Returning normally from `main` exits with status `0`. An uncaught exception prints a stack
+trace and exits non-zero. For anything else, `kotlin.system.exitProcess(n)` ends the process
+immediately:
+
+```text
+a normal return from main exits with 0
+exitProcess(n) would exit immediately with n, skipping the rest of main
+```
+
+`exitProcess` returns `Nothing`, so the compiler knows nothing after it runs — no
+unreachable-code complaints and no need for a dummy return.
+
+## suspend main
+
+```text
+suspend fun main() { } is allowed: the compiler wraps the body in runBlocking
+```
+
+A `suspend fun main` lets you call suspending functions at the top level without setting up
+a scope yourself. See [Coroutines](/async-programming/coroutines).
+
+## A whole program
+
+Put together, the smallest useful Kotlin program is three lines:
+
+```kotlin
+fun main() {
+    println("Hello world!")
+}
+```
+
+Save it as `hello.kt`, then:
+
+```bash
+kotlinc hello.kt -include-runtime -d hello.jar && java -jar hello.jar
+```
+
+`-include-runtime` bundles the Kotlin standard library so the jar runs on a plain JVM.
+Without it you need `kotlin-stdlib.jar` on the classpath.
+
+## Related
+
+- [Printing data](/language-basics/printing-data) — `println` and friends
+- [Standard functions](/functions/standard-functions) — the declaration syntax
+- [Code Organization](/language-basics/code-organization) — packages and file layout
+- [Arrays](/language-basics/basic-types/arrays) — what `args` is
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/main-function.kt" />
 
 import { Callout } from 'nextra/components'

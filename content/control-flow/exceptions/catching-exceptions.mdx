@@ -1,19 +1,320 @@
 ---
 title: "Catching Exceptions"
-description: "Catching Exceptions in Kotlin."
+description: "try-catch as an expression, catch ordering, what finally really does to a return, use() instead of finally, and runCatching."
 ---
 
 # Catching Exceptions
 
 <DocSource docs={["exceptions"]} />
 
-Exceptions help your code run more predictably, even when runtime errors occur that could disrupt program execution. Kotlin treats all exceptions as _unchecked_ by default. Unchecked exceptions simplify the exception handling process: you can catch exceptions, but you don't need to explicitly handle or [declare](https://kotlinlang.org/docs/java-to-kotlin-interop.html) them.
+`try`/`catch`/`finally` works as you would expect from Java, with one addition: `try` is an
+**expression**, so it can produce a value. The traps are all in `finally` — a `return`
+there overrides the one in `try`, and `finally` is almost always the wrong tool because
+`use()` exists.
+
+Outputs below come from running `examples/control-flow/catching-exceptions.kt`.
+
+## try as an expression
+
+The value is the last expression of whichever block ran — `try` on success, the matching
+`catch` on failure:
+
+```kotlin
+val num: Int = try {
+    // If countWith() completes successfully, its return value is assigned to num
+    countWith(0)
+} catch (e: ArithmeticException) {
+    // If countWith() throws, the catch block's value is assigned instead
+    -1
+}
+println("Result: $num")
+```
+
+```text
+Result: -1
+```
+
+Same expression with an argument that works:
+
+```kotlin
+println(
+    try {
+        countWith(5)
+    } catch (e: ArithmeticException) {
+        -1
+    }
+)
+```
+
+```text
+2
+```
+
+If you do not need the exception instance, name it `_`:
+
+```kotlin
+val userSettings = try {
+    java.io.File("user-settings-that-does-not-exist.json").readText()
+} catch (_: java.io.IOException) {
+    "{}"
+}
+println(userSettings)
+```
+
+```text
+{}
+```
+
+A `try` must have at least one `catch` **or** a `finally`; it cannot stand alone.
+
+## Order your catch blocks
+
+A `try` may have as many `catch` blocks as you like, and the **first matching one** wins —
+matching includes superclasses, so a general handler placed first silently swallows the
+specific cases:
+
+```kotlin
+open class WithdrawalException(message: String) : Exception(message)
+class InsufficientFundsException(message: String) : WithdrawalException(message)
+
+for (amount in listOf(500.5, 600.0, 400.0)) {
+    try {
+        processWithdrawal(amount, 500.0)
+    // The order of catch blocks is important!
+    } catch (e: InsufficientFundsException) {
+        println("Caught an InsufficientFundsException: ${e.message}")
+    } catch (e: WithdrawalException) {
+        println("Caught a WithdrawalException: ${e.message}")
+    }
+}
+```
+
+```text
+Caught an InsufficientFundsException: Insufficient funds for the withdrawal.
+Caught an InsufficientFundsException: Insufficient funds for the withdrawal.
+Withdrawal processed
+```
+
+With only the general handler, the specific exception still lands there:
+
+```kotlin
+try {
+    processWithdrawal(600.0, 500.0)
+} catch (e: WithdrawalException) {
+    println("Caught as WithdrawalException, but it really is ${e::class.simpleName}")
+}
+```
+
+```text
+Caught as WithdrawalException, but it really is InsufficientFundsException
+```
+
+<Callout type="warning">
+  Kotlin does **not** reject an unreachable `catch`. Put `catch (e: Exception)` first and
+  every later block becomes dead code, with no error and no warning. Specific to general,
+  top to bottom, always.
+</Callout>
+
+## finally
+
+`finally` runs whether the `try` completed, threw, or returned. It does not change the
+value of the `try` expression:
+
+```kotlin
+fun divideOrNull(a: Int): Int {
+    try {
+        val b = 44 / a
+        println("try block: Executing division: $b")
+        return b
+    } catch (e: ArithmeticException) {
+        println("catch block: Encountered ArithmeticException $e")
+        return -1
+    } finally {
+        println("finally block: The finally block is always executed")
+    }
+}
+
+divideOrNull(0)
+divideOrNull(4)
+```
+
+```text
+catch block: Encountered ArithmeticException java.lang.ArithmeticException: / by zero
+finally block: The finally block is always executed
+try block: Executing division: 11
+finally block: The finally block is always executed
+```
+
+Note the `finally` line appears *after* the `return` in both cases — the return value is
+computed, then `finally` runs, then the function actually returns.
+
+<Callout type="warning">
+  Unless `finally` returns too, in which case it wins outright:
+
+  ```kotlin
+  fun finallyWins(): String {
+      try {
+          return "from try"
+      } finally {
+          return "from finally"
+      }
+  }
+
+  println(finallyWins())
+  ```
+
+  ```text
+  from finally
+  ```
+
+  A `return` (or `throw`, or `break`) inside `finally` discards whatever the `try` or
+  `catch` was about to return — **and discards an in-flight exception**, so a function can
+  swallow a failure and return normally without a single `catch` in sight. Never put a
+  control-flow jump in a `finally` block.
+</Callout>
+
+`try` with `finally` and no `catch` is the cleanup-without-handling form. The exception
+still propagates:
+
+```kotlin
+val resource = MockResource()
+try {
+    resource.use()
+} finally {
+    resource.close()
+}
+```
+
+```text
+Resource being used
+Resource closed
+ArithmeticException
+the exception still propagated
+```
+
+## use() instead of finally
+
+For anything implementing `AutoCloseable`, `use()` does the `try`/`finally` for you. This
+is why Kotlin has no `try`-with-resources syntax:
+
+```kotlin
+class Loud(val name: String) : AutoCloseable {
+    fun work() = println("$name working")
+    override fun close() = println("$name closed")
+}
+
+Loud("writer").use { it.work() }
+println(runCatching {
+    Loud("failing").use {
+        it.work()
+        throw IllegalStateException("boom")
+    }
+}.exceptionOrNull()?.message)
+```
+
+```text
+writer working
+writer closed
+failing working
+failing closed
+boom
+```
+
+Closed on the happy path and on the failing one, and the exception still reaches the caller.
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `use()` also handles the case a hand-written `finally` gets wrong. If the body throws
+  *and* `close()` throws, a `finally { close() }` replaces your real exception with the
+  close failure. `use()` keeps the body's exception and attaches the other as a
+  **suppressed** exception:
+
+  ```kotlin
+  class FailingOnClose : AutoCloseable {
+      override fun close() = throw IllegalStateException("close failed")
+  }
+
+  val thrown = runCatching {
+      FailingOnClose().use { throw IllegalArgumentException("body failed") }
+  }.exceptionOrNull()!!
+  println("thrown: ${thrown::class.simpleName}: ${thrown.message}")
+  println("suppressed: ${thrown.suppressed.joinToString { "${it::class.simpleName}: ${it.message}" }}")
+  ```
+
+  ```text
+  thrown: IllegalArgumentException: body failed
+  suppressed: IllegalStateException: close failed
+  ```
 </Callout>
+
+## runCatching
+
+When you want the outcome as a value rather than as control flow, `runCatching` returns a
+`Result`:
+
+```kotlin
+println(runCatching { countWith(0) }.getOrNull())
+println(runCatching { countWith(0) }.getOrDefault(-1))
+println(runCatching { countWith(0) }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { countWith(5) }.map { it * 100 }.getOrNull())
+```
+
+```text
+null
+-1
+ArithmeticException
+200
+```
+
+`Result` composes — `map`, `recover`, `fold`, `onFailure` — which is what makes it useful in
+a chain where a `try` block would need a variable.
+
+<Callout type="warning">
+  `runCatching` catches **`Throwable`**, not `Exception`. That includes
+  `StackOverflowError`, `OutOfMemoryError` and `NotImplementedError` — errors you almost
+  certainly do not want to absorb:
+
+  ```kotlin
+  fun blowTheStack(n: Int): Int = blowTheStack(n + 1)
+  println(runCatching { blowTheStack(0) }.exceptionOrNull()?.let { it::class.simpleName })
+  ```
+
+  ```text
+  StackOverflowError
+  ```
+
+  A hand-written `catch (e: Exception)` would have let it through:
+
+  ```kotlin
+  println(
+      try {
+          blowTheStack(0)
+      } catch (e: Exception) {
+          "caught as Exception"
+      } catch (e: StackOverflowError) {
+          "caught as StackOverflowError"
+      }
+  )
+  ```
+
+  ```text
+  caught as StackOverflowError
+  ```
+
+  It also catches `CancellationException`, which breaks coroutine cancellation — inside a
+  coroutine, catch the specific exceptions you expect instead.
+</Callout>
+
+## Related
+
+- [Throwing Exceptions](/control-flow/exceptions/throwing-exceptions) — `throw` and the precondition functions
+- [Exceptions](/control-flow/exceptions) — the hierarchy, and which `Throwable`s not to catch
+- [Scope Functions](/functions/scope-functions) — `use` is the same shape as `let`
+- [Coroutines Behavior](/async-programming/coroutines-behavior) — why `runCatching` is risky inside a coroutine
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/catching-exceptions.kt" />
 
 import { Callout } from 'nextra/components'

@@ -1,18 +1,178 @@
 ---
 title: "Local Functions"
-description: "Local Functions in Kotlin."
+description: "Functions declared inside other functions, the closure they capture, and the declaration-order rule that catches people."
 ---
 
 # Local Functions
 
 <DocSource docs={["functions"]} />
 
-Kotlin's documentation for **Local Functions** lives outside the
-[kotlin-web-site](https://github.com/JetBrains/kotlin-web-site) repository, so there is
-no summary to quote here. Follow the official sources above.
+A local function is a function declared inside another function. Its point is to keep a
+helper — especially a recursive one — out of the enclosing scope *and* out of the public
+signature, because it can read the outer function's locals instead of taking them as
+parameters.
+
+Outputs below come from running `examples/functions/local-functions.kt`.
+
+## A helper that stays private
+
+Depth-first search needs a `visited` set, which callers should not have to supply. A local
+function hides both the set and the recursion:
+
+```kotlin
+fun dfs(graph: SocialGraph) {
+    fun dfs(current: Friend, visited: MutableSet<Friend>) {
+        if (!visited.add(current)) return
+        println("Visited ${current.name}")
+        for (friend in current.friends)
+            dfs(friend, visited)
+    }
+    dfs(graph.people[0], HashSet())
+}
+```
+
+```text
+Visited Alice
+Visited Bob
+Visited Charlie
+```
+
+The inner `dfs` can share the outer function's name — the inner declaration shadows the
+outer one inside the body, and the recursive call resolves to the inner one.
+
+## The closure removes the parameter
+
+Because a local function sees the enclosing function's locals, `visited` need not be a
+parameter at all:
+
+```kotlin
+fun dfsWithClosure(graph: SocialGraph) {
+    val visited = HashSet<Friend>()
+    fun dfs(current: Friend) {
+        if (!visited.add(current)) return
+        println("Visited ${current.name}")
+        for (friend in current.friends)
+            dfs(friend)
+    }
+    dfs(graph.people[0])
+}
+```
+
+```text
+Visited Alice
+Visited Bob
+Visited Charlie
+```
+
+Captured `var`s are writable, not just readable — unlike Java, which requires captured
+locals to be effectively final:
+
+```kotlin
+var calls = 0
+fun tick(): Int {
+    calls++
+    return calls
+}
+println(tick())
+println(tick())
+println("calls = $calls")
+```
+
+```text
+1
+2
+calls = 2
+```
 
 <Callout type="info">
-  This page has not been expanded yet. The links above are authoritative.
+  A captured `var` is boxed into a shared holder object, so the local function and the
+  enclosing function really do see the same variable. This is the same mechanism
+  [lambdas](/functions/function-types/lambda-functions) use for their closures.
 </Callout>
+
+## Shadowing
+
+A local declaration shadows a top-level one of the same name for the rest of the body. The
+top-level one is still reachable by its fully qualified name:
+
+```kotlin
+fun mergeStrings(vararg strings: String): String = strings.joinToString("+")
+println(mergeStrings("a", "b", "c"))
+println(examples.functions.mergeStrings("a", "b", "c"))
+```
+
+```text
+a+b+c
+a-b-c
+```
+
+<Callout type="warning">
+  A local function must be declared **before** the line that calls it. Unlike top-level and
+  member functions, local declarations are visible only from their declaration onwards, so
+
+  ```kotlin
+  fun outer(): String = inner()   // Unresolved reference 'inner'
+  fun inner(): String = "inner"
+  ```
+
+  does not compile. Two local functions therefore cannot be mutually recursive; make at
+  least one of them a top-level or member function instead.
+</Callout>
+
+## Local extensions and local classes
+
+Both are allowed, and both are confined to the enclosing function:
+
+```kotlin
+fun String.shout() = "${uppercase()}!"
+println("hello".shout())
+
+class Box(val n: Int) {
+    fun doubled() = n * 2
+}
+println(Box(21).doubled())
+```
+
+```text
+HELLO!
+42
+```
+
+A local extension is the cleanest way to give one function a bit of syntax sugar without
+polluting the package namespace.
+
+## Which modifiers apply
+
+`tailrec` does work on a local function, so a local helper can still recurse without
+growing the stack:
+
+```kotlin
+tailrec fun countDownLocal(n: Int): Int = if (n == 0) 0 else countDownLocal(n - 1)
+println(countDownLocal(5_000_000))
+```
+
+```text
+0
+```
+
+Three modifiers are rejected outright by kotlinc 2.4.21:
+
+| Modifier | Message |
+| :--- | :--- |
+| `private` (and other visibilities) | `modifier 'private' is not applicable to 'local function'` |
+| `open` (and `abstract`, `override`) | `modifier 'open' is not applicable to 'local function'` |
+| `inline` | `local inline functions are not yet supported` |
+
+Visibility is moot — a local function is only visible in its block. The `inline` message is
+the interesting one: the restriction is an implementation gap rather than a rule, so a local
+helper called in a hot loop still costs a call. Hoist it to a top-level `private inline fun`
+if that matters.
+
+## Related
+
+- [Standard functions](/functions/standard-functions) — top-level declarations
+- [Member Functions](/functions/member-functions) — functions inside a class
+- [Lambda Functions](/functions/function-types/lambda-functions) — the anonymous alternative
+- [Scope Functions](/functions/scope-functions) — `run { }` as a temporary scope instead
 
 import { Callout } from 'nextra/components'

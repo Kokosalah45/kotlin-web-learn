@@ -1,19 +1,191 @@
 ---
 title: "if"
-description: "if in Kotlin."
+description: "if as a statement and as an expression, what type the expression has, and the smart casts it produces."
 ---
 
 # if
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+`if` is Kotlin's ternary operator. Used as an expression it returns the value of the branch
+that ran, so `val x = if (c) a else b` is the whole of `c ? a : b` — and then some, because
+each branch can be a block.
+
+Outputs below come from running `examples/control-flow/if.kt`.
+
+## Statement form
+
+Condition in parentheses, body in braces (or a single statement with no braces at all):
+
+```kotlin
+var taller = heightAlice
+if (heightAlice < heightBob) taller = heightBob
+println("Taller height is $taller")
+
+if (heightAlice > heightBob) {
+    taller = heightAlice
+} else {
+    taller = heightBob
+}
+println("Taller height is $taller")
+```
+
+```text
+Taller height is 175
+Taller height is 175
+```
+
+## Expression form
+
+```kotlin
+taller = if (heightAlice > heightBob) heightAlice else heightBob
+
+val heightLimit = 150
+val heightOrLimit =
+    if (heightLimit > heightAlice) heightLimit
+    else if (heightAlice > heightBob) heightAlice
+    else heightBob
+
+println("Taller height is $taller")
+println("Height or limit is $heightOrLimit")
+```
+
+```text
+Taller height is 175
+Height or limit is 175
+```
+
+<Callout type="warning">
+  An `if` used as an expression **must** have an `else`. Without one there would be a path
+  that produces no value, and kotlinc says so:
+
+  ```text
+  error: 'if' must have both main and 'else' branches when used as an expression.
+  ```
+
+  This is why `val x = if (c) a` never compiles, no matter how obvious the fallback looks.
+  Use `if (c) a else null`, or Kotlin's `?:`, or `takeIf`.
+</Callout>
+
+With blocks, the value is the block's **last expression**:
+
+```kotlin
+val chosen = if (heightAlice > heightBob) {
+    print("Choose Alice\n")
+    heightAlice
+} else {
+    print("Choose Bob\n")
+    heightBob
+}
+println("Taller height is $chosen")
+```
+
+```text
+Choose Bob
+Taller height is 175
+```
+
+## The type of the expression
+
+It is the nearest common supertype of all branches, which is often broader than you
+expected:
+
+```kotlin
+val mixed = if (heightAlice > heightBob) "alice" else 175
+println(mixed)
+println(mixed::class.simpleName)
+val both: Any = mixed
+println(both is Comparable<*>)
+```
+
+```text
+175
+Int
+true
+```
+
+The runtime value is an `Int`, but the *static* type is the common supertype of `String`
+and `Int` — not `Any`, but the intersection of the interfaces they share, which is why the
+`Comparable<*>` check passes. Mixing branch types rarely helps; if you want `Any`, say so.
+
+A branch of type [`Nothing`](/control-flow/exceptions) imposes no constraint at all, since
+`Nothing` is a subtype of everything. That is what makes the throw-in-a-branch idiom type
+check:
+
+```kotlin
+fun requirePositive(n: Int): Int = if (n > 0) n else throw IllegalArgumentException("not positive: $n")
+
+println(requirePositive(5))
+println(runCatching { requirePositive(-5) }.exceptionOrNull()?.message)
+```
+
+```text
+5
+not positive: -5
+```
+
+The function's return type is `Int`, not `Any`.
+
+## Smart casts
+
+A successful `is` check or `!= null` check inside the condition narrows the type for the
+rest of the branch, with no cast:
+
+```kotlin
+val value: Any = "ID-98345"
+if (value is String) {
+    println(value.startsWith("ID-"))
+    println(value.length)
+}
+```
+
+```text
+true
+8
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  The smart cast only holds where the compiler can prove the value did not change in
+  between. It works on a `val`, a local `var` not captured by a lambda that writes to it,
+  and an immutable property — but not on a `var` property of another object or a `var`
+  with a custom getter, because either could return something different on the second read.
+  See [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts).
 </Callout>
+
+## The null-check idioms
+
+A plain `if` works, but Kotlin has shorter forms for exactly this shape:
+
+```kotlin
+val name: String? = null
+val display = if (name != null) name else "anonymous"
+println(display)
+println(name ?: "anonymous")
+```
+
+```text
+anonymous
+anonymous
+```
+
+| Instead of | Write |
+| :--- | :--- |
+| `if (x != null) x else y` | `x ?: y` |
+| `if (x != null) x.f() else null` | `x?.f()` |
+| `if (c) x else null` | `x.takeIf { c }` |
+| `if (x is T) x.f()` | `(x as? T)?.f()` |
+
+## Related
+
+- [when](/control-flow/conditional-expressions/when) — three or more branches, or a subject
+- [Conditional Expressions](/control-flow/conditional-expressions) — statement versus expression
+- [Nullability Check Operators](/null-safety/nullability-check-operators) — `?:`, `?.`, `!!`
+- [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts) — `is`, `as`, `as?`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/if.kt" />
 
 import { Callout } from 'nextra/components'

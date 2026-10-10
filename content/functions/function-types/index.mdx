@@ -1,19 +1,211 @@
 ---
 title: "Function Types"
-description: "Function Types in Kotlin."
+description: "(A, B) -> C notation, receiver types, how to get an instance of a function type, and how to invoke one."
 ---
 
 # Function Types
 
 <DocSource docs={["lambdas"]} />
 
-Kotlin functions are [first-class](https://en.wikipedia.org/wiki/First-class_function), which means they can be stored in variables and data structures, and can be passed as arguments to and returned from other higher-order functions. You can perform any operations on functions that are possible for other non-function values.
+Kotlin functions are first-class: they can be stored in variables, put in collections,
+passed as arguments and returned. The type system expresses that with function types —
+`(Int) -> String`, `() -> Unit`, `String.(Int) -> String` — and the notation has a few
+corners worth knowing before you read someone else's signature.
+
+Outputs below come from running `examples/functions/function-types.kt`.
+
+## The notation
+
+A parenthesised parameter list, an arrow, a return type:
+
+```kotlin
+val onClick: () -> Unit = { println("clicked") }
+onClick()
+val describe: (Int) -> String = { n -> "n is $n" }
+println(describe(7))
+```
+
+```text
+clicked
+n is 7
+```
+
+Parameters may be named, purely as documentation — the names are not part of the type and
+callers cannot use them:
+
+```kotlin
+val named: (x: Int, y: Int) -> String = { x, y -> "($x, $y)" }
+println(named(1, 2))
+```
+
+```text
+(1, 2)
+```
+
+Three rules that are easy to get wrong:
+
+| Want | Write |
+| :--- | :--- |
+| returns nothing | `() -> Unit` — `Unit` cannot be omitted |
+| a nullable function | `((Int, Int) -> Int)?` — the parentheses are required |
+| a function returning a function | `(Int) -> (Int) -> Int` |
+
+```kotlin
+val maybe: ((Int, Int) -> Int)? = null
+println(maybe?.invoke(1, 2))
+val curriedAdd: (Int) -> (Int) -> Int = { x -> { y -> x + y } }
+println(curriedAdd(1)(2))
+```
+
+```text
+null
+3
+```
+
+<Callout type="warning">
+  The arrow is **right-associative**: `(Int) -> (Int) -> Unit` is a function taking an `Int`
+  and returning a function. The one that takes a function is
+  `((Int) -> Int) -> Unit` — note the extra parentheses on the left.
+</Callout>
+
+A long function type reads better behind a [type alias](/classes-and-objects/more-on-classes-and-objects/type-aliases):
+
+```kotlin
+typealias Transform = (String) -> String
+
+val shout: Transform = { it.uppercase() }
+println(shout("hello"))
+```
+
+```text
+HELLO
+```
+
+## Receiver types
+
+`A.(B) -> C` is a function callable **on** an `A`, with `A` available inside the body as
+`this`. These go with [lambdas with receiver](/functions/function-types/lambda-functions)
+and are what makes Kotlin's builder DSLs work.
+
+A receiver and a first parameter are interchangeable for non-literal values, in both
+directions:
+
+```kotlin
+val repeatFun: String.(Int) -> String = { times -> this.repeat(times) }
+val twoParameters: (String, Int) -> String = repeatFun
+
+println(repeatFun("ab", 3))
+println(twoParameters("ab", 3))
+println(runTransformation(repeatFun)) // takes a (String, Int) -> String
+```
+
+```text
+ababab
+ababab
+hellohellohello
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  A function type **without** a receiver is inferred by default, even when the initialiser
+  is a reference to an extension function. To get the receiver form, annotate the variable
+  explicitly, as `repeatFun` does above.
 </Callout>
+
+Suspending functions have their own family of types, written with the modifier:
+`suspend () -> Unit`, `suspend A.(B) -> C`.
+
+## Four ways to get an instance
+
+```kotlin
+val fromLambda: (Int) -> Boolean = { it % 2 != 0 }
+val fromAnonymous: (Int) -> Boolean = fun(n: Int): Boolean { return n % 2 != 0 }
+val fromReference: (Int) -> Boolean = ::isOdd
+val fromBoundReference: () -> String = "kodee"::uppercase
+val fromClass: (Int) -> Int = IntTransformer() // class IntTransformer : (Int) -> Int
+
+println(listOf(fromLambda(3), fromAnonymous(3), fromReference(3)))
+println(fromBoundReference())
+println(fromClass(9))
+```
+
+```text
+[true, true, true]
+KODEE
+81
+```
+
+- a [lambda](/functions/function-types/lambda-functions) — `{ a, b -> a + b }`
+- an [anonymous function](/functions/function-types/anonymous-functions) — `fun(s: String): Int { ... }`
+- a **callable reference** — `::isOdd`, `String::toInt`, `List<Int>::size`, `::Regex`, or
+  bound to an instance as `"kodee"::uppercase`
+- an instance of a class that **implements** the function type as an interface
+
+The compiler infers the type whenever there is enough information:
+`val a = { i: Int -> i + 1 }` is a `(Int) -> Int`.
+
+## Invoking
+
+Call it like a function, or call `invoke` explicitly. A receiver-typed value can be called
+either way — receiver first as an argument, or extension-style:
+
+```kotlin
+val stringPlus: (String, String) -> String = String::plus
+val intPlus: Int.(Int) -> Int = Int::plus
+
+println(stringPlus.invoke("<-", "->"))
+println(stringPlus("Hello, ", "world!"))
+println(intPlus.invoke(1, 1))
+println(intPlus(1, 2))
+println(2.intPlus(3))
+```
+
+```text
+<-->
+Hello, world!
+2
+3
+5
+```
+
+`invoke` is an [operator](/classes-and-objects/class-members/methods), which is why `f(x)`
+and `f.invoke(x)` mean the same thing — and why the only thing a custom class needs in
+order to *be* a function is `override operator fun invoke`.
+
+## What this is at runtime
+
+On the JVM a function type is one of the `kotlin.jvm.functions.FunctionN` interfaces:
+
+```kotlin
+val a = { i: Int -> i + 1 }
+println(a::class.java.genericInterfaces.joinToString())
+```
+
+```text
+interface kotlin.jvm.functions.Function1
+```
+
+```kotlin
+println(onClick is Function0<*>)
+println(describe is Function1<*, *>)
+println(IntTransformer() is Function1<*, *>)
+```
+
+```text
+true
+true
+true
+```
+
+A receiver type adds nothing at runtime — `A.(B) -> C` is a `Function2<A, B, C>`, which is
+exactly why it is interchangeable with `(A, B) -> C`. Each non-inlined lambda is therefore
+an object, which is what [inline functions](/functions/function-types/higher-order-functions)
+exist to avoid.
+
+## Related
+
+- [Higher-order Functions](/functions/function-types/higher-order-functions) — taking and returning functions
+- [Lambda Functions](/functions/function-types/lambda-functions) — the usual way to write one
+- [Anonymous Functions](/functions/function-types/anonymous-functions) — when you need the return type
+- [Scope Functions](/functions/scope-functions) — the stdlib's receiver-typed lambdas
 
 import { Callout } from 'nextra/components'

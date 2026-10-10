@@ -1,19 +1,352 @@
 ---
 title: "Type Checks & Casts"
-description: "Type Checks & Casts in Kotlin."
+description: "is and !is, smart casts and their exact prerequisites, as versus as?, up- and downcasting, and type erasure."
 ---
 
 # Type Checks & Casts
 
 <DocSource docs={["typecasts"]} />
 
-In Kotlin, you can do two things with types at runtime: check whether an object is a specific type, or convert it to another type. Type **checks** help you confirm the kind of object you're dealing with, while type **casts** attempt to convert the object to another type.
+Two things you can do with a type at runtime: **check** it with `is`, or **cast** to it with
+`as` / `as?`. Most of the time you only need the check, because a successful `is` narrows
+the type for the rest of the block — a *smart cast*. The rules for when that is allowed are
+precise, and the one case that never works is a `var` property.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/language-basics/type-checks-and-casts.kt`.
+
+## is and !is
+
+```kotlin
+val input: Any = "Hello, Kotlin"
+
+if (input is String) println("Message length: ${input.length}")
+if (input !is String) println("Input is not a valid message")
+else println("Processing message: ${input.length} characters")
+```
+
+```text
+Message length: 13
+Processing message: 13 characters
+```
+
+`input.length` needs no cast — that is the smart cast. `is` also answers subtype questions:
+
+```kotlin
+fun handleAnimal(animal: Pet) {
+    println("Handling animal: ${animal.petName}")
+    animal.speak()
+    if (animal is PetDog) {
+        println("Special care instructions: This is a dog.")
+    } else if (animal is PetCat) {
+        println("Special care instructions: This is a cat.")
+    }
+}
+```
+
+```text
+Handling animal: Buddy
+Buddy says: Woof!
+Special care instructions: This is a dog.
+---
+Handling animal: Whiskers
+Whiskers says: Meow!
+Special care instructions: This is a cat.
+---
+```
+
+Checking against a *supertype* of the declared type is allowed and always `true`, so it is
+never worth writing.
+
+## Smart casts
+
+The compiler tracks checks and inserts the cast for you, in more places than you might
+expect.
+
+**After a positive check**, and **after a negative check that exits**:
+
+```kotlin
+fun logMessage(data: Any) {
+    // data is automatically cast to String
+    if (data is String) {
+        println("Received text: ${data.length} characters")
+    }
+}
+
+fun logMessageEarlyReturn(data: Any) {
+    if (data !is String) return
+    println("Received text: ${data.length} characters")
+}
+```
+
+```text
+Received text: 14 characters
+Received text: 14 characters
+```
+
+**In a `when`:**
+
+```kotlin
+fun processInput(data: Any) {
+    when (data) {
+        is Int -> println("Log: Assigned new ID ${data + 1}")
+        is String -> println("Log: Received message \"$data\"")
+        is IntArray -> println("Log: Processed scores, total = ${data.sum()}")
+        else -> println("Log: unrecognised input")
+    }
+}
+```
+
+```text
+Log: Assigned new ID 1002
+Log: Received message "System rebooted"
+Log: Processed scores, total = 60
+```
+
+**In a `while` condition**, which is what makes a sealed-state loop readable:
+
+```kotlin
+var status: Status = robo.status()
+while (status is Ok) {
+    // status is smart cast to Ok, so currentRoom is accessible
+    println("Cleaning ${status.currentRoom}...")
+    status = robo.clean()
+}
+```
+
+```text
+Cleaning Living Room...
+Finished cleaning Living Room
+Cleaning Kitchen...
+Finished cleaning Kitchen
+```
+
+**Through a `Boolean` variable**, so you can name the condition:
+
+```kotlin
+val animal: Any = PetDog("Rex")
+val isDog = animal is PetDog
+if (isDog) animal.bark()
+```
+
+```text
+BARK!
+```
+
+**Across `&&` and `||`.** With `&&` the compiler infers an *intersection* of all the checked
+types; with `||` it narrows to their closest common supertype:
+
+```kotlin
+val x: Any = "abc"
+if (x is String && x.length > 0) println(x.length)
+
+fun describeAnimal(animal: Any) {
+    // Infers the intersection of Bird and Fish
+    if (animal is Bird && animal is Fish) {
+        animal.fly()
+        animal.swim()
+    }
+}
+
+fun signalCheck(signalStatus: Any) {
+    if (signalStatus is Postponed || signalStatus is Declined) {
+        // smart cast to the common supertype Signal
+        signalStatus.signal()
+    }
+}
+```
+
+```text
+3
+gliding
+swimming
+postponed
+```
+
+An intersection type (`Bird & Fish`) is non-denotable — you cannot write it, you only see it
+in diagnostics. The `||` case gives an **approximation** of a union type, since Kotlin has
+no union types.
+
+Smart cast information also survives into `catch` and `finally`, and is tracked correctly
+across an assignment that invalidates it:
+
+```kotlin
+fun testString() {
+    var stringInput: String? = null
+    stringInput = ""
+    try {
+        println(stringInput.length)   // known non-null
+        stringInput = null            // the smart cast is dropped
+        if (2 > 1) throw Exception()
+        stringInput = ""
+    } catch (exception: Exception) {
+        println(stringInput?.length)  // nullable again
+    }
+}
+```
+
+```text
+0
+null
+```
+
+## The prerequisites
+
+A smart cast is only sound if the value cannot change between the check and the use:
+
+| Kind | Smart cast? |
+| :--- | :--- |
+| `val` local | always, except a local delegated property |
+| `val` property | only if `private` or `internal`, or checked in the declaring module; **never** if `open` or if it has a custom getter |
+| `var` local | only if not modified in between and not captured by a lambda that writes it |
+| `var` property | **never** |
+
+```kotlin
+class MutableHolder {
+    var value: Any = "text"
+}
+
+if (holder.value is String) {
+    println((holder.value as String).length)   // explicit cast required
+}
+```
+
+```text
+4
+```
+
+<Callout type="warning">
+  A `var` property can be changed by any other code — another thread, a setter, a different
+  object — between your check and your use, so the compiler never trusts it. The fix is not
+  the `as` cast above but a local: `val v = holder.value; if (v is String) println(v.length)`.
+  That reads better *and* removes the race.
+
+  The same reasoning rules out `open` `val` properties (an override could return something
+  else) and `val`s with custom getters (see
+  [val vs var](/language-basics/variables/val-vs-var#a-val-with-a-custom-getter-is-recomputed)).
 </Callout>
+
+Smart casts also work on variables captured by a lambda passed to an
+[inline function](/functions/function-types/higher-order-functions), because an inline
+lambda is called in place and cannot leak the reference.
+
+## as throws, as? returns null
+
+```kotlin
+val rawInput: Any = "user-1234"
+println(rawInput as String)
+println(runCatching { rawInput as Int }.exceptionOrNull()?.let { it::class.simpleName })
+println(rawInput as? String)
+println(rawInput as? Int)
+```
+
+```text
+user-1234
+ClassCastException
+user-1234
+null
+```
+
+`as` is the **unsafe** operator: a failed cast throws `ClassCastException`. `as?` is the
+safe one: it gives `null` instead.
+
+<Callout type="warning">
+  Casting to a *nullable* type does not make `as` safe. `as String?` still throws when the
+  value is neither a `String` nor `null`:
+
+  ```kotlin
+  val config: Map<String, Any?> = mapOf(
+      "username" to "kodee",
+      "alias" to null,
+      "loginAttempts" to 3
+  )
+
+  println(config["username"] as String?)
+  println(config["alias"] as String?)
+  println(runCatching { config["loginAttempts"] as String? }.exceptionOrNull()?.let { it::class.simpleName })
+  println(config["loginAttempts"] as? String)
+  ```
+
+  ```text
+  kodee
+  null
+  ClassCastException
+  null
+  ```
+
+  Only `as?` returns `null` on a type mismatch. Reach for `as?` by default, and `as` only
+  where a failure really is a bug.
+</Callout>
+
+## Up and downcasting
+
+Upcasting — to a supertype — needs no operator at all:
+
+```kotlin
+val dog = PetDog("Buddy")
+val asPet: Pet = dog
+asPet.speak()
+```
+
+```text
+Buddy says: Woof!
+```
+
+Downcasting does, because it can fail:
+
+```kotlin
+val pet: Pet = PetDog("Rex")
+val maybeDog: PetDog? = pet as? PetDog
+maybeDog?.bark()
+val maybeCat: PetCat? = pet as? PetCat
+println(maybeCat)
+```
+
+```text
+BARK!
+null
+```
+
+`as?` plus `?.` is the whole pattern: cast, and do nothing if it was not that type.
+
+## Generic type arguments are erased
+
+```kotlin
+val strings: Any = listOf("a", "b")
+println(strings is List<*>)
+@Suppress("UNCHECKED_CAST")
+val asInts = strings as List<Int>
+println(runCatching { asInts.first() + 1 }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+true
+ClassCastException
+```
+
+<Callout type="warning">
+  `strings as List<Int>` **succeeds**. The type argument does not exist at runtime, so there
+  is nothing to check — the cast is unchecked (hence the warning you have to suppress) and
+  the `ClassCastException` arrives later, at the first element access, far from the cast that
+  caused it.
+
+  You can only check the erased form, `is List<*>`. To check elements too, you have to look
+  at them (`all { it is Int }`), or use a `reified` type parameter on an
+  [inline function](/functions/function-types/higher-order-functions) — which is exactly
+  what `filterIsInstance<T>()` does.
+</Callout>
+
+## Related
+
+- [Data types](/language-basics/data-types) — static type versus runtime class
+- [when](/control-flow/conditional-expressions/when) — `is` branches and exhaustiveness
+- [Safe Casts](/null-safety/safe-casts) — `as?` from the null-safety side
+- [val vs var](/language-basics/variables/val-vs-var) — why smart casts need a stable value
+- [Filtering](/collection-operations/filtering) — `filterIsInstance`, the reified version
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/type-checks-and-casts.kt" />
 
 import { Callout } from 'nextra/components'

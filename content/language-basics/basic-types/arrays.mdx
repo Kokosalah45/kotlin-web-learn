@@ -1,19 +1,427 @@
 ---
 title: "Arrays"
-description: "Arrays in Kotlin."
+description: "Array<T> and the primitive-type arrays, why == and toString do the wrong thing, fixed size, invariance, and converting to collections."
 ---
 
 # Arrays
 
 <DocSource docs={["arrays"]} api={["kotlin-stdlib/kotlin/-array/"]} />
 
-An array is a data structure that holds a fixed number of values of the same type or its subtypes. Array elements are ordered and accessed by index.
+An array holds a fixed number of values of one type, accessed by index. Three things make
+arrays unlike every other Kotlin container: `==` compares **references**, `toString()`
+returns a hash code, and a `val` array's contents are still mutable. Prefer a
+[collection](/language-basics/collections) unless you need Java interop or primitive
+storage.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/language-basics/arrays.kt`.
+
+## Arrays or collections?
+
+| | Arrays | Collections |
+| :--- | :--- | :--- |
+| Size | fixed | depends on the type |
+| Read-only variant | no, always mutable | yes (`List`, `Set`) |
+| Add / remove | no support — allocate and copy | yes, on mutable types |
+| `==` | compares references | compares contents |
+| Primitives | stored unboxed in `IntArray` etc. | usually boxed |
+| Java interop | maps to `T[]` | maps to `java.util.List` / `Set` |
+| Functional operations | limited | extensive |
+
+## Creating
+
+```kotlin
+val simpleArray = arrayOf(1, 2, 3)              // Array<Int>
+val emptyArrayRight = emptyArray<String>()
+val emptyArrayLeft: Array<String> = emptyArray()
+val nullArray: Array<Int?> = arrayOfNulls(3)
+val zeroes = Array<Int>(3) { 0 }
+val squares = Array(5) { i -> i * i }
+```
+
+```text
+1, 2, 3
+null, null, null
+0, 0, 0
+0, 1, 4, 9, 16
+```
+
+The `Array(size) { }` constructor calls its lambda **once per index**, with the index as the
+argument — which matters when the element is mutable:
+
+```kotlin
+val shared = Array(3) { mutableListOf<Int>() }
+shared[0].add(1)
+println(shared.map { it.size })
+```
+
+```text
+[1, 0, 0]
+```
+
+Three separate lists, not three references to one. (`Array(3) { someSharedList }` would be
+the other thing.)
+
+Nested arrays are just arrays of arrays, and need not be the same size:
+
+```kotlin
+val twoDArray = Array(2) { Array<Int>(2) { 0 } }
+println(twoDArray.contentDeepToString())
+```
+
+```text
+[[0, 0], [0, 0]]
+```
+
+## Primitive-type arrays
+
+`Array<Int>` boxes its elements. The eight primitive-array types do not:
+
+| Kotlin | Java |
+| :--- | :--- |
+| `BooleanArray` | `boolean[]` |
+| `ByteArray` | `byte[]` |
+| `CharArray` | `char[]` |
+| `DoubleArray` | `double[]` |
+| `FloatArray` | `float[]` |
+| `IntArray` | `int[]` |
+| `LongArray` | `long[]` |
+| `ShortArray` | `short[]` |
+
+```kotlin
+println(IntArray(5).joinToString())
+println(IntArray(5) { i -> i * i }.joinToString())
+println(intArrayOf(1, 2, 3, 4, 5).joinToString())
+println(charArrayOf('K', 't', 'l').joinToString())
+println(doubleArrayOf(0.22, 4.16, 0.5).joinToString())
+```
+
+```text
+0, 0, 0, 0, 0
+0, 1, 4, 9, 16
+1, 2, 3, 4, 5
+K, t, l
+0.22, 4.16, 0.5
+```
+
+<Callout type="warning">
+  `IntArray` is **not** a subtype of `Array<Int>` — the primitive arrays are separate types
+  with a parallel API, not subclasses:
+
+  ```kotlin
+  val asAny: Any = IntArray(0)
+  println(asAny is Array<*>)
+  println(asAny is IntArray)
+  ```
+
+  ```text
+  false
+  true
+  ```
+
+  So a function taking `Array<Int>` will not accept an `IntArray`, and `vararg ts: Int`
+  gives you an `IntArray` while `vararg ts: T` gives an `Array<T>`. Convert with
+  `toTypedArray()` and `toIntArray()`:
+
+  ```kotlin
+  println(intArrayOf(1, 2, 3).toTypedArray()::class.simpleName)
+  println(arrayOf(1, 2, 3).toIntArray()::class.simpleName)
+  ```
+
+  ```text
+  Array
+  IntArray
+  ```
+
+  There is no `StringArray`, because `String` is not a primitive — use `arrayOf<String>()`.
 </Callout>
+
+## Access and modify
+
+```kotlin
+simpleArray[0] = 10
+twoDArray[0][0] = 2
+println(simpleArray[0])
+println(twoDArray[0][0])
+println(runCatching { simpleArray[5] }.exceptionOrNull()?.let { it::class.simpleName })
+println(simpleArray.getOrNull(5))
+```
+
+```text
+10
+2
+ArrayIndexOutOfBoundsException
+null
+```
+
+Out of bounds throws `ArrayIndexOutOfBoundsException` — note a
+[String](/language-basics/basic-types/strings) throws `StringIndexOutOfBoundsException`
+instead. `getOrNull` and `getOrElse` are the safe forms.
+
+<Callout type="warning">
+  `val` protects the **reference**, not the contents:
+
+  ```kotlin
+  val fixed = arrayOf(1, 2, 3)
+  fixed[0] = 99
+  println(fixed.joinToString())
+  ```
+
+  ```text
+  99, 2, 3
+  ```
+
+  There is no read-only array type and no `Array<out T>` that forbids writes at runtime. If
+  you need immutability, use `List`.
+</Callout>
+
+`fill(element, fromIndex, toIndex)` replaces a range in place — `fromIndex` inclusive,
+`toIndex` exclusive:
+
+```kotlin
+val arr = IntArray(3)
+arr.fill(1)
+println(arr.joinToString())
+arr.fill(0, 0, 2)
+println(arr.joinToString())
+```
+
+```text
+1, 1, 1
+0, 0, 1
+```
+
+## Size and lookup
+
+```kotlin
+val letters = arrayOf("a", "b", "c", "c")
+println("${letters.size} ${letters.indices} ${letters.lastIndex}")
+println("${letters.first()} ${letters.last()}")
+println(letters.contains("b"))
+println("b" in letters)
+```
+
+```text
+4 0..3 3
+a c
+true
+true
+```
+
+## Arrays are invariant
+
+`Array<String>` is **not** an `Array<Any>`, because assigning an `Int` through such a
+reference would break the underlying `String[]` at runtime. To accept any element type
+read-only, project it:
+
+```kotlin
+fun printArr(arr: Array<out Any>) {
+    for (item in arr) print("$item, ")
+}
+
+printArr(arrayOf("k", "t", "n"))
+```
+
+```text
+k, t, n, 
+```
+
+`List<out E>` is covariant by declaration, which is why `List<String>` *is* a
+`List<Any>` and needs no projection.
+
+## Adding and removing means copying
+
+Fixed size, so there is no `add` or `remove`:
+
+```kotlin
+var grow = intArrayOf(0, 1, 2)
+grow = grow.copyOf(grow.size + 1)
+println(grow.joinToString())
+grow[grow.lastIndex] = 3
+println(grow.joinToString())
+
+var plus = intArrayOf(0, 1, 2)
+plus += 3
+println(plus.joinToString())
+plus = plus + intArrayOf(4, 5)
+println(plus.joinToString())
+```
+
+```text
+0, 1, 2, 0
+0, 1, 2, 3
+0, 1, 2, 3
+0, 1, 2, 3, 4, 5
+```
+
+`copyOf(newSize)` pads with the type's default, and `+=` allocates a whole new array — so
+building an array element by element in a loop is quadratic. Use a `MutableList` and
+`toTypedArray()` at the end.
+
+## == does the wrong thing
+
+```kotlin
+val first = arrayOf(1, 2, 3)
+val second = arrayOf(1, 2, 3)
+println(first == second)
+println(first.contentEquals(second))
+println(first contentEquals second)
+println(first.toList() == second.toList())
+
+val nestedA = arrayOf(arrayOf(1, 2), arrayOf(3))
+val nestedB = arrayOf(arrayOf(1, 2), arrayOf(3))
+println(nestedA.contentEquals(nestedB))
+println(nestedA.contentDeepEquals(nestedB))
+```
+
+```text
+false
+true
+true
+true
+false
+true
+```
+
+<Callout type="warning">
+  `==` on arrays compares **references**, so two arrays with identical contents are not
+  equal. Use `contentEquals` — and `contentDeepEquals` for nested arrays, since
+  `contentEquals` compares the *inner arrays* by reference and therefore returns `false`
+  above.
+
+  The same applies to hashing, which makes an array useless as a map key:
+
+  ```kotlin
+  val key1 = arrayOf(1, 2)
+  val key2 = arrayOf(1, 2)
+  val byArray = hashMapOf(key1 to "first")
+  println(byArray[key2])
+  println(byArray[key1])
+  ```
+
+  ```text
+  null
+  first
+  ```
+
+  Only the identical array finds the entry. Key by a `List` instead.
+</Callout>
+
+## toString does the wrong thing too
+
+```kotlin
+println(arrayOf(1, 2, 3).toString().substringBefore('@'))
+println(arrayOf(1, 2, 3).contentToString())
+println(nestedA.contentDeepToString())
+println(intArrayOf(1, 2, 3).contentToString())
+```
+
+```text
+[Ljava.lang.Integer;
+[1, 2, 3]
+[[1, 2], [3]]
+[1, 2, 3]
+```
+
+`toString()` gives the JVM type tag plus an identity hash — which is what you get by
+interpolating an array into a string template, so `"values: $arr"` is almost never what you
+wanted. Use `contentToString()`, `contentDeepToString()` or `joinToString()`.
+
+## Transformations
+
+```kotlin
+println(arrayOf(1, 2, 3).sum())
+println(arrayOf(3, 1, 2).sortedArray().joinToString())
+val toSort = arrayOf(3, 1, 2)
+toSort.sort()
+println(toSort.joinToString())
+println(arrayOf(1, 2, 3).map { it * 2 })
+println(arrayOf(1, 2, 3).filter { it > 1 })
+```
+
+```text
+6
+1, 2, 3
+1, 2, 3
+[2, 4, 6]
+[2, 3]
+```
+
+`sort()` sorts **in place**; `sortedArray()` returns a new array. And note that `map` and
+`filter` on an array return a **`List`**, not an array — the functional operations leave the
+array world as soon as you use them.
+
+## The spread operator
+
+`*` passes an array's elements as separate arguments to a
+[`vararg`](/functions/standard-functions/varargs) parameter:
+
+```kotlin
+val lettersArray = arrayOf("c", "d")
+printAllStrings("a", "b", *lettersArray)
+```
+
+```text
+abcd
+```
+
+## Converting to collections
+
+`toList()`, `toSet()` and `toMap()` **copy**:
+
+```kotlin
+println(letters.toSet())
+println(letters.toList())
+```
+
+```text
+[a, b, c]
+[a, b, c, c]
+```
+
+`asList()` does not — it wraps, so the two stay linked:
+
+```kotlin
+val backing = arrayOf("a", "b", "c")
+val copied = backing.toList()
+val wrapped = backing.asList()
+backing[0] = "d"
+println("copied: $copied")
+println("wrapped: $wrapped")
+```
+
+```text
+copied: [a, b, c]
+wrapped: [d, b, c]
+```
+
+<Callout type="warning">
+  `asList()` returns a *view*. It looks like a read-only `List`, and its contents change
+  under you whenever anyone writes to the array. Unless you are certain the array is not
+  shared or modified afterwards, use `toList()`.
+</Callout>
+
+`toMap()` works on an array of `Pair`, and a repeated key keeps the **last** value:
+
+```kotlin
+val pairArray = arrayOf("apple" to 120, "banana" to 150, "cherry" to 90, "apple" to 140)
+println(pairArray.toMap())
+```
+
+```text
+{apple=140, banana=150, cherry=90}
+```
+
+## Related
+
+- [Collections](/language-basics/collections) — what to use instead, most of the time
+- [varargs](/functions/standard-functions/varargs) — where arrays turn up unavoidably
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — why `==` behaves this way
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/arrays.kt" />
 
 import { Callout } from 'nextra/components'

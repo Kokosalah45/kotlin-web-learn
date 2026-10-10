@@ -1,19 +1,210 @@
 ---
 title: "return"
-description: "return in Kotlin."
+description: "Return types, returning several values, the Nothing type, and local versus non-local return out of a lambda."
 ---
 
 # return
 
-<DocSource docs={["functions","returns"]} />
+<DocSource docs={["functions", "returns"]} />
 
-The type of these expressions is the [Nothing type](https://kotlinlang.org/docs/exceptions.html).
+`return` leaves the nearest enclosing function **or anonymous function** — and a lambda is
+neither. That one sentence explains every surprise on this page: a bare `return` inside a
+lambda does not end the lambda, it ends the function the lambda is written in.
+
+Outputs below come from running `examples/functions/return.kt`.
+
+## Returning more than one value
+
+A Kotlin function returns a single value, so "several results" means one object holding
+them. Prefer a [data class](/classes-and-objects/more-on-classes-and-objects/data-classes), even a single-use one, over
+`Pair`:
+
+```kotlin
+data class OrderSummary(val subtotal: Double, val tax: Double)
+
+fun calculateOrderSummary(prices: List<Double>): OrderSummary {
+    val subtotal = prices.sum()
+    return OrderSummary(subtotal, subtotal * 0.2)
+}
+
+val summary = calculateOrderSummary(listOf(12.50, 8.00, 4.50))
+println(summary)
+println(summary.subtotal)
+println(summary.tax)
+```
+
+```text
+OrderSummary(subtotal=25.0, tax=5.0)
+25.0
+5.0
+```
+
+`Pair` and `Triple` hold the same data, but name the parts `first`, `second` and `third`:
+
+```kotlin
+fun calculateOrderTotals(prices: List<Double>): Pair<Double, Double> {
+    val subtotal = prices.sum()
+    return Pair(subtotal, subtotal * 0.2)
+}
+
+val totals = calculateOrderTotals(listOf(12.50, 8.00, 4.50))
+println(totals)
+println(totals.first)
+println(totals.second)
+```
+
+```text
+(25.0, 5.0)
+25.0
+5.0
+```
+
+Same numbers, no clue which is the tax. If the values are of the same *kind* rather than
+different meanings, return a collection instead.
+
+## return inside an expression body
+
+An expression body usually infers its type — but not once it contains a `return`:
+
+```kotlin
+// A `return` inside an expression body forces an explicit return type.
+fun getDisplayNameOrDefault(userId: String?): String =
+    displayName(userId ?: return "default")
+
+println(getDisplayNameOrDefault("kodee"))
+println(getDisplayNameOrDefault(null))
+```
+
+```text
+user-kodee
+default
+```
+
+The `?: return "default"` works because `return` is an **expression**, usable anywhere a
+value is expected.
+
+## The type of return is Nothing
+
+`return`, `break`, `continue` and `throw` all have type
+[`Nothing`](/control-flow/exceptions), the type with no values. A function returning
+`Nothing` never returns normally, and the compiler knows it:
+
+```kotlin
+fun fail(message: String): Nothing = throw IllegalStateException(message)
+
+fun describe(value: Any?): String = when (value) {
+    null -> fail("value was null")
+    is Int -> "Int $value"
+    else -> "other $value"
+}
+
+println(describe(42))
+println(runCatching { describe(null) }.exceptionOrNull()?.message)
+```
+
+```text
+Int 42
+value was null
+```
+
+The `null ->` branch type-checks as `String` even though `fail` returns `Nothing`, because
+`Nothing` is a subtype of every type.
+
+## Local return out of a lambda
+
+To stop *this iteration* of a lambda and carry on, label the return. The label can be
+explicit, or the implicit one named after the function the lambda was passed to:
+
+```kotlin
+fun printUpToThreeExplicit() {
+    listOf(1, 2, 3, 4, 5).forEach lit@{
+        if (it == 3) return@lit
+        print(it)
+    }
+    println(" done with explicit label")
+}
+
+fun printUpToThreeImplicit() {
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return@forEach
+        print(it)
+    }
+    println(" done with implicit label")
+}
+```
+
+```text
+1245 done with explicit label
+1245 done with implicit label
+```
+
+Both skip only the element `3` — that is `continue`, not `break`.
+
+## Non-local return
+
+Drop the label and the same code means something completely different:
+
+```kotlin
+// An unlabelled `return` inside a lambda passed to an inline function
+// leaves the WHOLE function.
+fun printUpToThreeNonLocal() {
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return
+        print(it)
+    }
+    println(" this line is never reached")
+}
+
+printUpToThreeNonLocal()
+println("back in main")
+```
+
+```text
+12back in main
+```
+
+<Callout type="warning">
+  `1245 done...` versus `12` — the only difference in the source is `return@forEach` versus
+  `return`. The unlabelled form abandons `printUpToThreeNonLocal()` entirely, so neither
+  `4`, `5` nor the trailing `println` ever runs.
+</Callout>
+
+This only compiles because `forEach` is an [inline function](/functions/function-types/higher-order-functions):
+the lambda body is copied into the call site, so a `return` there really can leave the
+outer function. Pass the same lambda to a non-inline function and the bare `return` is a
+compile error. Used deliberately it reads very well:
+
+```kotlin
+fun hasZeros(ints: List<Int>): Boolean {
+    ints.forEach {
+        if (it == 0) return true // returns from hasZeros
+    }
+    return false
+}
+
+println(hasZeros(listOf(1, 2, 0, 3)))
+println(hasZeros(listOf(1, 2, 3)))
+```
+
+```text
+true
+false
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  When returning a value at a label, `return@a 1` parses as "return `1` at label `@a`",
+  never as "return the labelled expression `@a 1`".
 </Callout>
+
+An [anonymous function](/functions/function-types/anonymous-functions) is the third option:
+because it is declared with `fun`, an unlabelled `return` inside it returns from the
+anonymous function itself.
+
+## Related
+
+- [parameters](/functions/standard-functions/parameters) — what goes in
+- [Anonymous Functions](/functions/function-types/anonymous-functions) — `return` with lambda-like syntax
+- [break & continue](/control-flow/loops/break-and-continue) — the other structural jumps
+- [Label Loops](/control-flow/loops/label-loops) — the same label syntax on loops
 
 import { Callout } from 'nextra/components'

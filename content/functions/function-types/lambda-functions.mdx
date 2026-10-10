@@ -1,19 +1,248 @@
 ---
 title: "Lambda Functions"
-description: "Lambda Functions in Kotlin."
+description: "Lambda syntax, trailing lambdas, the implicit it, destructuring, closures, and lambdas with a receiver."
 ---
 
 # Lambda Functions
 
 <DocSource docs={["lambdas"]} />
 
-Kotlin functions are [first-class](https://en.wikipedia.org/wiki/First-class_function), which means they can be stored in variables and data structures, and can be passed as arguments to and returned from other higher-order functions. You can perform any operations on functions that are possible for other non-function values.
+A lambda expression is a function written as an expression and passed straight in. Every
+one of its syntactic shortcuts — the trailing position, the implicit `it`, the implied
+return — is optional sugar over one full form, and knowing that form is how you read the
+ones that look like magic.
+
+Outputs below come from running `examples/functions/lambda-functions.kt`.
+
+## The full form, and what you can drop
+
+```kotlin
+val sumExplicit: (Int, Int) -> Int = { x: Int, y: Int -> x + y }
+val sumInferred = { x: Int, y: Int -> x + y }
+
+println(sumExplicit(2, 3))
+println(sumInferred(2, 3))
+```
+
+```text
+5
+5
+```
+
+Always braces; parameters inside the braces with optional types; body after `->`. The
+**last expression is the return value** when the lambda's return type is not `Unit`:
+
+```kotlin
+val classify = { n: Int ->
+    val even = n % 2 == 0
+    if (even) "even" else "odd"
+}
+println(classify(4))
+println(classify(5))
+```
+
+```text
+even
+odd
+```
+
+## Trailing lambdas
+
+If the last parameter is a function, the lambda can go **outside** the parentheses — and if
+it is the only argument, the parentheses disappear entirely:
+
+```kotlin
+val items = listOf(1, 2, 3, 4)
+println(items.fold(1) { acc, e -> acc * e })
+println(items.fold(1, { acc, e -> acc * e }))
+run { println("the only argument, so no parentheses at all") }
+```
+
+```text
+24
+24
+the only argument, so no parentheses at all
+```
+
+Both `fold` calls are the same call. This convention is why `if`-like constructs such as
+`repeat(3) { }` and whole DSLs read as though they were language syntax.
+
+## it
+
+When the compiler can work out the signature and there is exactly one parameter, you may
+omit both the parameter and the `->`; the parameter is then called `it`:
+
+```kotlin
+val ints = listOf(-2, -1, 0, 1, 2)
+println(ints.filter { it > 0 })
+println(ints.map { it * it })
+```
+
+```text
+[1, 2]
+[4, 1, 0, 1, 4]
+```
+
+<Callout type="warning">
+  `it` does not stack. In a nested lambda, the inner `it` shadows the outer one and there is
+  no way to name the outer one after the fact, so the outer lambda has to declare a
+  parameter:
+
+  ```kotlin
+  println(listOf("ab", "cd").map { outer -> outer.map { it.uppercaseChar() } })
+  ```
+
+  ```text
+  [[A, B], [C, D]]
+  ```
+
+  Naming the parameter is also the right move as soon as the lambda is more than one line —
+  `it` three calls deep is unreadable even when it compiles.
+</Callout>
+
+## Returning a value explicitly
+
+The implicit "last expression" and an explicit labelled return are equivalent:
+
+```kotlin
+println(ints.filter {
+    val shouldKeep = it > 0
+    shouldKeep
+})
+println(ints.filter {
+    val shouldKeep = it > 0
+    return@filter shouldKeep
+})
+```
+
+```text
+[1, 2]
+[1, 2]
+```
+
+A **bare** `return` is a different thing entirely and leaves the enclosing function — see
+[return](/functions/standard-functions/return).
+
+## Unused parameters and destructuring
+
+`_` stands in for a parameter you do not use, and a single parameter that is a `Pair`,
+`Map.Entry` or data class can be destructured in the parameter list:
+
+```kotlin
+val map = mapOf("a" to 1, "b" to 2)
+map.forEach { (_, value) -> println("$value!") }
+map.forEach { (key, value) -> println("$key -> $value") }
+println(listOf(1 to "one", 2 to "two").map { (n, name) -> "$n is $name" })
+```
+
+```text
+1!
+2!
+a -> 1
+b -> 2
+[1 is one, 2 is two]
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `{ (key, value) -> }` is **one** parameter being unpacked, not two. That is why
+  `forEach` on a `Map` works with it — `forEach` passes a single `Map.Entry`.
 </Callout>
+
+## Closures
+
+A lambda can read *and write* the variables of the scope it was written in:
+
+```kotlin
+var total = 0
+ints.filter { it > 0 }.forEach { total += it }
+println(total)
+
+var counter = 0
+val increment = { counter++ }
+increment()
+increment()
+increment()
+println(counter)
+```
+
+```text
+3
+3
+```
+
+What is captured is the **variable**, not its value at the time the lambda was created:
+
+```kotlin
+var message = "first"
+val printMessage = { println(message) }
+printMessage()
+message = "second"
+printMessage()
+```
+
+```text
+first
+second
+```
+
+<Callout type="info">
+  A `for` loop is the reassuring case: the loop variable is a fresh `val` each iteration,
+  so lambdas built in a loop each keep their own value — no `let`-binding dance needed.
+
+  ```kotlin
+  val printers = mutableListOf<() -> Unit>()
+  for (i in 1..3) printers += { print(i) }
+  printers.forEach { it() }
+  ```
+
+  ```text
+  123
+  ```
+</Callout>
+
+## Lambdas with a receiver
+
+Given a [function type with a receiver](/functions/function-types), a lambda's `this` is
+the receiver object, so its members are in scope unqualified:
+
+```kotlin
+val plus: Int.(Int) -> Int = { other -> plus(other) }
+println(2.plus(3))
+```
+
+```text
+5
+```
+
+That is the whole mechanism behind type-safe builders: the function creates the receiver,
+then calls the lambda on it:
+
+```kotlin
+fun html(init: HtmlBuilder.() -> Unit): HtmlBuilder {
+    val builder = HtmlBuilder() // create the receiver object
+    builder.init()              // pass the receiver object to the lambda
+    return builder
+}
+
+println(html { body("Hello") }.render())
+```
+
+```text
+<body>Hello</body>
+```
+
+`body("Hello")` resolves against `HtmlBuilder` with no qualifier in sight. The stdlib's
+[scope functions](/functions/scope-functions) — `apply`, `run`, `with` — are the same idea
+applied to any object.
+
+A suspending lambda is written with the keyword, `suspend { doWork() }`, and has type
+`suspend () -> Unit`.
+
+## Related
+
+- [Function Types](/functions/function-types) — the type a lambda has
+- [Anonymous Functions](/functions/function-types/anonymous-functions) — when you need an explicit return type
+- [Higher-order Functions](/functions/function-types/higher-order-functions) — what receives them
+- [Scope Functions](/functions/scope-functions) — `let`, `run`, `with`, `apply`, `also`
 
 import { Callout } from 'nextra/components'

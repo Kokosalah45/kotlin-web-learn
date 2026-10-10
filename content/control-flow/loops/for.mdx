@@ -1,19 +1,219 @@
 ---
 title: "for"
-description: "for in Kotlin."
+description: "Iterating collections, ranges, arrays, indices and maps — and what really happens when you mutate a list mid-loop."
 ---
 
 # for
 
 <DocSource docs={["control-flow"]} />
 
-Kotlin gives you flexible tools to control your program's flow. Use `if`, `when`, and loops to define clear, expressive logic for your conditions.
+`for (x in thing)` is Kotlin's only `for`. There is no three-clause C form, because
+iterating a [range](/language-basics/ranges) covers it. The loop variable is a fresh `val`
+each iteration, which removes a whole class of closure bug — and mutating the collection
+you are iterating does something worse than throw.
+
+Outputs below come from running `examples/control-flow/for.kt`.
+
+## Collections, ranges, strings
+
+```kotlin
+for (item in listOf("Milk", "Bananas", "Bread")) print("$item ")
+```
+
+```text
+Milk Bananas Bread 
+```
+
+```kotlin
+for (i in 1..6) print(i)
+for (i in 1..<6) print(i)
+for (i in 6 downTo 0 step 2) print(i)
+for (c in 'a'..'e') print(c)
+```
+
+```text
+123456
+12345
+6420
+abcde
+```
+
+A range that cannot progress simply does not run — no error, no single pass:
+
+```kotlin
+for (i in 5..1) print(i)
+println("(nothing above)")
+```
+
+```text
+(nothing above)
+```
+
+<Callout type="warning">
+  `5..1` being empty is the counting-down trap: `for (i in list.size - 1..0)` never
+  executes. You want `for (i in list.indices.reversed())` or
+  `for (i in list.size - 1 downTo 0)`.
+</Callout>
+
+A `String` iterates over its `Char`s:
+
+```kotlin
+for (c in "Kotlin") print("$c.")
+```
+
+```text
+K.o.t.l.i.n.
+```
+
+## Indices and withIndex
+
+```kotlin
+val routineSteps = arrayOf("Wake up", "Brush teeth", "Make coffee")
+
+for (i in routineSteps.indices) println("$i: ${routineSteps[i]}")
+for ((index, value) in routineSteps.withIndex()) println("The step at $index is \"$value\"")
+```
+
+```text
+0: Wake up
+1: Brush teeth
+2: Make coffee
+The step at 0 is "Wake up"
+The step at 1 is "Brush teeth"
+The step at 2 is "Make coffee"
+```
+
+`indices` gives a range of valid indices; `withIndex()` gives `IndexedValue` pairs you can
+destructure. Use `indices` when you need the index for arithmetic, `withIndex()` when you
+need both and would otherwise index back into the collection.
+
+## Destructuring
+
+Anything whose element type supports destructuring can be unpacked in the loop header,
+which is how you iterate a `Map`:
+
+```kotlin
+val capitals = linkedMapOf("France" to "Paris", "Japan" to "Tokyo")
+for ((country, capital) in capitals) println("$country -> $capital")
+```
+
+```text
+France -> Paris
+Japan -> Tokyo
+```
+
+## The loop variable is a val
+
+Each iteration binds a **new** immutable variable, so lambdas created in a loop each capture
+their own value:
+
+```kotlin
+val printers = mutableListOf<() -> Unit>()
+for (i in 1..3) printers += { print(i) }
+printers.forEach { it() }
+```
+
+```text
+123
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Java's `for (int i = ...)` reuses one variable, which is why capturing it requires an
+  effectively-final copy and why `for (int i...) list.add(() -> print(i))` does not compile
+  there. Kotlin has no such problem, and `i` cannot be reassigned inside the body either.
 </Callout>
+
+## Mutating the collection you are iterating
+
+The interesting part. Three edits to the same five-element list, through the list's own
+iterator:
+
+```kotlin
+val removeLast = mutableListOf(1, 2, 3, 4, 5)
+for (n in removeLast) if (n == 5) removeLast.remove(n)
+```
+
+```text
+ConcurrentModificationException
+[1, 2, 3, 4]
+```
+
+```kotlin
+val removeSecondToLast = mutableListOf(1, 2, 3, 4, 5)
+for (n in removeSecondToLast) if (n == 4) removeSecondToLast.remove(n)
+```
+
+```text
+no exception
+[1, 2, 3, 5]
+```
+
+```kotlin
+val removeFirst = mutableListOf(1, 2, 3, 4, 5)
+for (n in removeFirst) if (n == 1) removeFirst.remove(n)
+```
+
+```text
+ConcurrentModificationException
+[2, 3, 4, 5]
+```
+
+<Callout type="warning">
+  Removing the **second-to-last** element throws nothing at all. `ArrayList`'s iterator decides `hasNext()`
+  by comparing its cursor with the *current* size and only checks for concurrent
+  modification inside `next()`. After removing element `4` the cursor already equals the new
+  size, so `hasNext()` returns `false`, the loop ends before `next()` can object, and the
+  last element is **silently skipped**. The exception you rely on to catch this bug
+  is the one case where it does not fire.
+
+  Removing anything else does throw `ConcurrentModificationException`, and note that the
+  removal still happened before it did: the list is left modified either way.
+</Callout>
+
+Iterate a copy, or use an operation that returns a new collection:
+
+```kotlin
+val safe = mutableListOf(1, 2, 3, 4, 5)
+for (n in safe.toList()) if (n % 2 == 0) safe.remove(n)
+println(safe)
+```
+
+```text
+[1, 3, 5]
+```
+
+`removeAll { }`, `retainAll { }` and `MutableIterator.remove()` are the other correct
+answers — see [Write Operations](/collection-operations/write-operations).
+
+## Ranges are not materialised
+
+A `for` over an `IntRange` compiles to an index-based loop with no object per element:
+
+```kotlin
+var sum = 0L
+for (i in 1..10_000_000) sum += i
+println(sum)
+```
+
+```text
+50000005000000
+```
+
+Ten million iterations, no allocation. The same is true of arrays. Collections go through a
+real `Iterator`, and [sequences](/language-basics/sequences) through a lazy one.
+
+## Related
+
+- [while](/control-flow/loops/while) — when the loop count is not known up front
+- [break & continue](/control-flow/loops/break-and-continue) — leaving early
+- [Ranges](/language-basics/ranges) — `..`, `..<`, `downTo`, `step`
+- [Iterators](/language-basics/collections/iterators) — what `for` is really calling
+- [Write Operations](/collection-operations/write-operations) — removing elements safely
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/for.kt" />
 
 import { Callout } from 'nextra/components'

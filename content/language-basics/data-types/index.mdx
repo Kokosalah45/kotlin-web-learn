@@ -1,19 +1,167 @@
 ---
 title: "Data types"
-description: "Data types in Kotlin."
+description: "Static type versus runtime class, Any as the root, nullability as part of the type, and Nothing."
 ---
 
 # Data types
 
 <DocSource docs={["types-overview"]} />
 
-In Kotlin, everything is an object in the sense that you can call member functions and properties on any variable. Some types, such as numbers, characters, and booleans, have an optimized internal representation as primitive values at runtime, but they appear and behave like regular classes in Kotlin code.
+Kotlin is statically typed: every expression has a type the compiler knows, and that type —
+not the object's runtime class — decides what you can call. Two features set it apart from
+Java's type system: `null` is tracked **in the type**, and there is a bottom type,
+`Nothing`, for expressions that never produce a value.
+
+Outputs below come from running `examples/language-basics/data-types.kt`.
+
+## Static type versus runtime class
+
+```kotlin
+interface Vehicle { val wheels: Int }
+class Car : Vehicle { override val wheels = 4 }
+
+val asVehicle: Vehicle = Car()
+println(asVehicle.wheels)
+println(asVehicle::class.simpleName)
+```
+
+```text
+4
+Car
+```
+
+The variable's type is `Vehicle`, so only `Vehicle`'s members are available; the object is
+still a `Car`, so an overridden member runs the `Car` version. That split is behind two
+things that trip people up: [extension functions](/functions/extension-functions) resolve
+against the *static* type, while [member functions](/functions/member-functions) dispatch on
+the *runtime* one.
+
+## Any is the root
+
+Every non-null value is an `Any`:
+
+```kotlin
+val values: List<Any> = listOf(1, "two", 3.0, true, 'c', listOf(1), Car())
+println(values.map { it::class.simpleName })
+println(values.all { it is Any })
+```
+
+```text
+[Int, String, Double, Boolean, Char, SingletonList, Car]
+true
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `listOf(1)` reports its class as `SingletonList`, not `ArrayList`. The standard library
+  returns `java.util.Collections.singletonList` for a one-element list, and
+  `java.util.Arrays$ArrayList` for several — concrete classes you should never depend on.
+  Program against `List`; the implementation behind it is an optimisation detail that has
+  changed before.
 </Callout>
+
+`Any` declares exactly three members, which is why every Kotlin object has them:
+
+```kotlin
+val car = Car()
+println(car.toString().substringBefore('@'))
+println(car == car)
+println(car.hashCode() == car.hashCode())
+```
+
+```text
+examples.languagebasics.Car
+true
+true
+```
+
+`toString()`, `equals()` and `hashCode()` — and nothing else. Anything else you can call on
+*any* value (`let`, `also`, `takeIf`, `to`) is an extension, not a member.
+
+## Nullability is part of the type
+
+`String` and `String?` are different types, and the compiler keeps them apart:
+
+```kotlin
+val present: String = "here"
+val absent: String? = null
+println(present.length)
+println(absent?.length)
+println(absent is String)
+println(absent is String?)
+println(listOf<String?>("a", null).size)
+```
+
+```text
+4
+null
+false
+true
+2
+```
+
+`null is String` is `false` and `null is String?` is `true` — nullability behaves like any
+other part of the type in an `is` check. `String` is a subtype of `String?`, so a `String`
+goes anywhere a `String?` is wanted and not the other way round. See
+[Null safety](/null-safety).
+
+## Nothing
+
+`Nothing` is the bottom type: it has **no values** and is a subtype of every other type.
+Nothing can be an instance of it, so an expression of type `Nothing` never completes
+normally:
+
+```kotlin
+val empty: List<Nothing> = emptyList()
+println(empty)
+println(empty.size)
+
+fun fail(): Nothing = throw IllegalStateException("no value")
+// `fail()` has type Nothing, so this still type-checks as String.
+val chosen: String = present ?: fail()
+println(chosen)
+println(runCatching { absent ?: fail() }.exceptionOrNull()?.message)
+```
+
+```text
+[]
+0
+here
+no value
+```
+
+A `List<Nothing>` can only ever be empty, which is exactly what `emptyList()` returns.
+
+| Type | Values | Turns up as |
+| :--- | :--- | :--- |
+| `Any` | every non-null value | the top type, the root of the hierarchy |
+| `Any?` | every value, including `null` | the real top of the type system |
+| `Unit` | one, `Unit` | the return type of a function that returns nothing useful |
+| `Nothing` | none | `throw`, `return`, `exitProcess`, `TODO()` |
+| `Nothing?` | one, `null` | the inferred type of a bare `null` literal |
+
+## Non-denotable types
+
+Some types the compiler uses internally cannot be written in source at all — you meet them
+only in diagnostics:
+
+- **platform types** (`String!`) from [Java interop](/language-basics/introduction-to-kotlin/java-interoperability), where nullability is unknown;
+- **intersection types** (`A & B`) from a smart cast through two `is` checks;
+- **integer literal types**, before an unsuffixed literal is pinned to `Int` or `Long`;
+- **captured types** from generic variance.
+
+The one exception is `T & Any`, the "definitely non-nullable" form, which is spellable.
+
+## Related
+
+- [Type Inference](/language-basics/data-types/type-inference) — when the type can be left out
+- [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts) — `is`, `as`, `as?`, smart casts
+- [Basic Types](/language-basics/basic-types) — the concrete types
+- [Null safety](/null-safety) — what the `?` buys you
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/data-types.kt" />
 
 import { Callout } from 'nextra/components'

@@ -1,19 +1,281 @@
 ---
 title: "val vs var"
-description: "val vs var in Kotlin."
+description: "What val actually guarantees, custom getters, private setters, the backing-property pattern, and why smart casts need a val."
 ---
 
 # val vs var
 
-<DocSource docs={["basic-syntax","properties"]} />
+<DocSource docs={["basic-syntax", "properties"]} />
 
-This is a collection of basic syntax elements with examples. At the end of every section, you'll find a link to a detailed description of the related topic.
+`val` means **assigned once**, not immutable. It locks the reference, not what the reference
+points at, and a `val` with a custom getter is not even a stored value — it is a function
+call. That distinction is the whole page.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/language-basics/val-vs-var.kt`.
+
+## The difference
+
+```kotlin
+val readOnly = 5
+var reassignable = 5
+reassignable += 1
+println("$readOnly / $reassignable")
+// readOnly = 6 // Error: val cannot be reassigned
+```
+
+```text
+5 / 6
+```
+
+Default to `val`. Reach for `var` when the value genuinely changes over the variable's
+lifetime — a loop accumulator, a counter, a cursor.
+
+## val is not deep immutability
+
+```kotlin
+val list = mutableListOf(1, 2, 3)
+list.add(4)
+list[0] = 99
+println(list)
+// list = mutableListOf() // Error: val cannot be reassigned
+```
+
+```text
+[99, 2, 3, 4]
+```
+
+<Callout type="warning">
+  The `val` stopped you replacing the list and did nothing to stop you emptying it. Two
+  independent choices:
+
+  | | reference | contents |
+  | :--- | :--- | :--- |
+  | `val list: MutableList<Int>` | fixed | mutable |
+  | `var list: List<Int>` | replaceable | read-only |
+  | `val list: List<Int>` | fixed | read-only |
+  | `var list: MutableList<Int>` | replaceable | mutable |
+
+  `val` controls the left column; the **type** controls the right one. For an unchangeable
+  collection you need both, and even then `List` is a read-only *view* — see
+  [read-only vs mutable](/language-basics/collections/read-only-vs-mutable).
 </Callout>
+
+```kotlin
+var reassignableList: List<Int> = listOf(1, 2, 3)
+reassignableList = listOf(4, 5)
+println(reassignableList)
+// reassignableList.add(6) // Error: no add() on List
+```
+
+```text
+[4, 5]
+```
+
+## A val with a custom getter is recomputed
+
+Every property has a getter. Give it a body and there is no stored value at all — each read
+runs the code:
+
+```kotlin
+class Rect(val width: Int, val height: Int) {
+    val area: Int
+        get() = width * height
+}
+
+val rect = Rect(3, 4)
+println("Width=${rect.width}, height=${rect.height}, area=${rect.area}")
+```
+
+```text
+Width=3, height=4, area=12
+```
+
+Which means a `val` can return something different on every read:
+
+```kotlin
+class Clock {
+    var reads = 0
+    val now: Int
+        get() {
+            reads++
+            return reads * 10
+        }
+}
+
+val clock = Clock()
+println(clock.now)
+println(clock.now)
+println(clock.now)
+println("reads = ${clock.reads}")
+```
+
+```text
+10
+20
+30
+reads = 3
+```
+
+<Callout type="warning">
+  Three reads of a `val`, three different answers, and a side effect each time. This is
+  exactly why the compiler refuses to [smart cast](/language-basics/data-types/type-checks-and-casts)
+  a `val` with a custom getter, and why `val` on a public API is not a promise of
+  stability. If a property is cheap and stable, give it a stored value; if it computes, a
+  function named `area()` often communicates better than a property.
+</Callout>
+
+## A var the outside world cannot set
+
+Change the setter's visibility without writing a body:
+
+```kotlin
+class BankAccount(initialBalance: Int) {
+    var balance: Int = initialBalance
+        // Only the class can modify the balance
+        private set
+
+    fun deposit(amount: Int) { if (amount > 0) balance += amount }
+    fun withdraw(amount: Int) { if (amount > 0 && amount <= balance) balance -= amount }
+}
+```
+
+```text
+Initial balance: 100
+After deposit: 150
+After withdrawal: 80
+```
+
+`account.balance = 1000` from outside is a compile error. This is the usual way to expose
+state as read-only without hiding it behind a function.
+
+## Custom setters and the backing field
+
+Inside an accessor, `field` is the stored value. Writing `balance = value` in a setter would
+recurse; `field = value` is the assignment:
+
+```kotlin
+class Scoreboard {
+    var score: Int = 0
+        set(value) {
+            field = value
+            println("Score updated to $field")
+        }
+}
+
+board.score = 10
+board.score = 20
+println(board.score)
+```
+
+```text
+Score updated to 10
+Score updated to 20
+20
+```
+
+A backing field is generated only when an accessor actually uses `field` (or when the
+accessor is the default one), which is why a `val` with a computed getter stores nothing.
+
+## The backing-property pattern
+
+To expose a read-only view over mutable state, keep the mutable one private:
+
+```kotlin
+class UserDirectory {
+    private val _users = mutableListOf("sarah", "mike", "emma")
+
+    val users: List<String>
+        get() = _users.sorted()
+
+    fun addUser(username: String) {
+        _users.add(username)
+    }
+}
+
+directory.addUser("alex")
+println(directory.users)
+```
+
+```text
+[alex, emma, mike, sarah]
+```
+
+The leading underscore is the convention for a backing property. Note this getter returns a
+fresh sorted copy each read, so callers cannot reach the real list at all — `get() = _users`
+would hand them a view they could cast back to `MutableList`.
+
+## Smart casts need a val
+
+```kotlin
+val maybe: Any = "text"
+if (maybe is String) println(maybe.length)
+
+var reassignableAny: Any = "text"
+if (reassignableAny is String) println(reassignableAny.length)
+```
+
+```text
+4
+4
+```
+
+Both work here, because the compiler can see the local `var` is not modified between the
+check and the use. The full rules:
+
+| Kind | Smart cast? |
+| :--- | :--- |
+| `val` local | always, except a local delegated property |
+| `val` property | only if `private`/`internal`, or checked in the declaring module; never if `open` or with a custom getter |
+| `var` local | only if not modified in between and not captured by a lambda that writes it |
+| `var` property | **never** — any other code could change it at any time |
+
+So the one case that never works is a `var` property:
+
+```kotlin
+class MutableHolder {
+    var value: Any = "text"
+}
+
+val holder = MutableHolder()
+if (holder.value is String) {
+    println((holder.value as String).length)   // explicit cast required
+}
+```
+
+```text
+4
+```
+
+## Which to reach for
+
+```kotlin
+var total = 0
+for (n in 1..5) total += n
+println(total)
+
+println((1..5).sum())
+```
+
+```text
+15
+15
+```
+
+A `var` is often a sign that an operation with a name would read better. When you do need
+one, keep its scope as small as you can — a `var` inside a function is cheap to reason
+about; a `var` property on a public class is a contract that its value changes.
+
+## Related
+
+- [Variables](/language-basics/variables) — declaring them in the first place
+- [Properties](/classes-and-objects/class-members/properties) — accessors in full
+- [read-only vs mutable](/language-basics/collections/read-only-vs-mutable) — the same distinction for collections
+- [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts) — the smart-cast rules
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/val-vs-var.kt" />
 
 import { Callout } from 'nextra/components'

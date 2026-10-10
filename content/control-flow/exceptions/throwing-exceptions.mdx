@@ -1,19 +1,269 @@
 ---
 title: "Throwing Exceptions"
-description: "Throwing Exceptions in Kotlin."
+description: "throw as an expression, the cause chain, and the four precondition functions — require, check, error and their *NotNull forms."
 ---
 
 # Throwing Exceptions
 
 <DocSource docs={["exceptions"]} />
 
-Exceptions help your code run more predictably, even when runtime errors occur that could disrupt program execution. Kotlin treats all exceptions as _unchecked_ by default. Unchecked exceptions simplify the exception handling process: you can catch exceptions, but you don't need to explicitly handle or [declare](https://kotlinlang.org/docs/java-to-kotlin-interop.html) them.
+`throw` creates an exception instance and unwinds. It is an **expression** of type
+`Nothing`, so it fits anywhere a value is expected. Most of the time you should not write it
+directly: the precondition functions `require`, `check` and `error` say *why* the failure
+happened and pick the right exception type for you.
+
+Outputs below come from running `examples/control-flow/throwing-exceptions.kt`.
+
+## throw
+
+```kotlin
+throw IllegalArgumentException()
+```
+
+```text
+IllegalArgumentException: null
+```
+
+With no argument the `message` is `null`, which is a useless log line. Pass a message, and
+when you are rethrowing, pass the original exception as the `cause`:
+
+```kotlin
+fun withdraw(amount: Double, availableFunds: Double) {
+    if (amount > availableFunds) {
+        val cause = IllegalStateException("Original cause: illegal state")
+        throw IllegalArgumentException("Input must not exceed $availableFunds", cause)
+    }
+    println("Withdrawal processed")
+}
+```
+
+```text
+IllegalArgumentException: Input must not exceed 500.0 | cause: Original cause: illegal state
+Withdrawal processed
+```
+
+The `cause` appears in the stack trace as a `Caused by:` section, which is how you keep the
+original failure's location while reporting a meaningful type at your own layer.
+
+## throw is an expression
+
+Type `Nothing` means it can sit on the right of `?:`, inside a `when` branch, or as the
+whole body of a function, without widening any type:
+
+```kotlin
+fun ageOf(input: String): Int = input.toIntOrNull() ?: throw NumberFormatException("not a number: $input")
+
+println(ageOf("42"))
+println(runCatching { ageOf("forty-two") }.exceptionOrNull()?.let { describe(it) })
+```
+
+```text
+42
+NumberFormatException: not a number: forty-two
+```
+
+The declared return type stays `Int`.
+
+## The precondition functions
+
+Four stdlib functions throw for you, and the point of choosing between them is that the
+exception type tells the reader whose fault the failure is.
+
+| Function | Checks | Throws |
+| :--- | :--- | :--- |
+| `require(cond) { msg }` | an argument the caller passed | `IllegalArgumentException` |
+| `requireNotNull(x) { msg }` | an argument is not null | `IllegalArgumentException` |
+| `check(cond) { msg }` | this object's own state | `IllegalStateException` |
+| `checkNotNull(x) { msg }` | a state value is not null | `IllegalStateException` |
+| `error(msg)` | unconditionally: "cannot happen" | `IllegalStateException` |
+| `TODO(msg)` | unconditionally: not written yet | `NotImplementedError` |
+
+```kotlin
+println(runCatching { require(false) }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { check(false) }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { error("boom") }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { requireNotNull(null) }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { checkNotNull(null) }.exceptionOrNull()?.let { it::class.simpleName })
+println(runCatching { TODO() }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+IllegalArgumentException
+IllegalStateException
+IllegalStateException
+IllegalArgumentException
+IllegalStateException
+NotImplementedError
+```
+
+<Callout type="warning">
+  `require` → *caller's fault*, `check` → *my fault*. Mixing them up is harmless at runtime
+  and misleading forever after: a caller who sees `IllegalStateException` from your library
+  will look for a lifecycle problem, not at the arguments they passed.
+
+  And note `TODO()` throws `NotImplementedError`, which extends `Error`, not `Exception` —
+  so a `catch (e: Exception)` around unfinished code will not catch it.
+</Callout>
+
+### require
+
+```kotlin
+fun getIndices(count: Int): List<Int> {
+    require(count >= 0) { "Count must be non-negative. You set count to $count." }
+    return List(count) { it + 1 }
+}
+
+println(getIndices(3))
+println(runCatching { getIndices(-1) }.exceptionOrNull()?.let { describe(it) })
+```
+
+```text
+[1, 2, 3]
+IllegalArgumentException: Count must be non-negative. You set count to -1.
+```
+
+A successful `require(x != null)` also produces a **smart cast**, so the rest of the
+function sees a non-nullable type:
+
+```kotlin
+fun printNonNullLength(str: String?) {
+    // Nullability check; after it, `str` is smart cast to a non-nullable String
+    require(str != null)
+    println(str.length)
+}
+
+printNonNullLength("Kodee")
+println(runCatching { printNonNullLength(null) }.exceptionOrNull()?.let { describe(it) })
+```
+
+```text
+5
+IllegalArgumentException: Failed requirement.
+```
+
+`str.length` with no `?.` or `!!` — that is the smart cast. The same holds for `check`.
+
+### check and checkNotNull
+
+`checkNotNull` returns the value, so it doubles as an unwrap:
+
+```kotlin
+class StateHolder {
+    var someState: String? = null
+
+    fun getStateValue(): String {
+        val state = checkNotNull(someState) { "State must be set beforehand!" }
+        check(state.isNotEmpty()) { "State must be non-empty!" }
+        return state
+    }
+}
+```
+
+```text
+IllegalStateException: State must be set beforehand!
+IllegalStateException: State must be non-empty!
+non-empty-state
+```
+
+Two different messages for two different broken states, which is the whole value of
+spelling the checks out rather than returning `null`.
+
+### error
+
+`error(msg)` throws unconditionally, and because its type is `Nothing` it is the natural
+`else` of a `when` that should be exhaustive:
+
+```kotlin
+fun processUserRole2(user: ThrowUser): String = when (user.role) {
+    "admin" -> "${user.name} is an admin."
+    "editor" -> "${user.name} is an editor."
+    "viewer" -> "${user.name} is a viewer."
+    else -> error("Undefined role: ${user.role}")
+}
+
+println(processUserRole2(ThrowUser("Alice", "admin")))
+println(runCatching { processUserRole2(ThrowUser("Bob", "guest")) }.exceptionOrNull()?.let { describe(it) })
+```
+
+```text
+Alice is an admin.
+IllegalStateException: Undefined role: guest
+```
+
+The function's return type is `String`, not `String?` and not `Any`.
+
+## The default messages
+
+Omit the message lambda and you get a generic string, which is why you usually should not:
+
+```kotlin
+println(runCatching { require(false) }.exceptionOrNull()?.message)
+println(runCatching { check(false) }.exceptionOrNull()?.message)
+println(runCatching { requireNotNull(null) }.exceptionOrNull()?.message)
+```
+
+```text
+Failed requirement.
+Check failed.
+Required value was null.
+```
+
+## The message is lazy
+
+The message is a lambda, not a string, so building it costs nothing on the success path:
+
+```kotlin
+fun loudMessage(): String {
+    println("  building the message")
+    return "failed"
+}
+
+require(true) { loudMessage() }
+println(runCatching { require(false) { loudMessage() } }.exceptionOrNull()?.message)
+```
+
+```text
+  building the message
+failed
+```
+
+One line of `building the message`, from the failing call only — the `require(true)` call
+printed nothing. Interpolating a large object into a precondition message is therefore free
+until the check actually fails.
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  The smart cast surviving a *function call* is not something the compiler could work out on
+  its own — a plain `fun myRequire(b: Boolean)` would not narrow anything. These functions
+  declare a `kotlin.contracts` contract saying "if I return, the condition held", which is
+  what the caller's flow analysis then uses. Writing `if (!cond) throw ...` by hand buys you
+  nothing and loses that.
 </Callout>
+
+## requireNotNull returns the value
+
+Both `*NotNull` forms give you the unwrapped value, so they replace a `!!`:
+
+```kotlin
+val maybe: String? = "present"
+val definitely: String = requireNotNull(maybe)
+println(definitely.length)
+```
+
+```text
+7
+```
+
+## Related
+
+- [Catching Exceptions](/control-flow/exceptions/catching-exceptions) — handling what you threw
+- [Exceptions](/control-flow/exceptions) — the hierarchy and the `Nothing` type
+- [when](/control-flow/conditional-expressions/when) — `error()` as the `else` branch
+- [Nullability Check Operators](/null-safety/nullability-check-operators) — `!!` versus `requireNotNull`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/throwing-exceptions.kt" />
 
 import { Callout } from 'nextra/components'

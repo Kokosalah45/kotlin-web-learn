@@ -1,19 +1,261 @@
 ---
 title: "Label Loops"
-description: "Label Loops in Kotlin."
+description: "Labelling a loop so break and continue can target it, and the same label syntax on lambdas and arbitrary expressions."
 ---
 
 # Label Loops
 
 <DocSource docs={["returns"]} />
 
-The type of these expressions is the [Nothing type](https://kotlinlang.org/docs/exceptions.html).
+A label is an identifier followed by `@` placed in front of an expression — `loop@ for
+(...)`. Qualifying a jump with it, `break@loop` or `continue@loop`, redirects the jump to
+that loop instead of the nearest one. The same mechanism labels lambdas, which is where
+most Kotlin code meets it.
+
+Outputs below come from running `examples/control-flow/label-loops.kt`.
+
+## The problem labels solve
+
+Unlabelled, a `break` in a nested loop leaves only the inner one, and the outer loop
+restarts it:
+
+```kotlin
+for (i in 1..3) {
+    for (j in 1..3) {
+        if (j == 2) break
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 21 31 
+```
+
+Label the outer loop and `break@loop` abandons both:
+
+```kotlin
+loop@ for (i in 1..3) {
+    for (j in 1..3) {
+        if (j == 2) break@loop
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 
+```
+
+`continue@loop` goes to the labelled loop's **next** iteration, skipping the rest of both
+bodies:
+
+```kotlin
+loop2@ for (i in 1..3) {
+    for (j in 1..3) {
+        if (j == 2) continue@loop2
+        print("$i$j ")
+    }
+    print("(end of i=$i) ")
+}
+```
+
+```text
+11 21 31 
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `(end of i=$i)` never prints. `continue@loop2` skips the remainder of the **outer** body
+  too, not just the inner loop — it is a jump to the top of the labelled loop, not a "break
+  out of the inner loop and carry on".
 </Callout>
+
+Labelling the *inner* loop is the same as not labelling at all, which is worth knowing when
+reading unfamiliar code:
+
+```kotlin
+for (i in 1..3) {
+    inner@ for (j in 1..3) {
+        if (j == 2) break@inner
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 21 31 
+```
+
+A label reaches as far out as you put it:
+
+```kotlin
+top@ for (a in 1..2) {
+    for (b in 1..2) {
+        for (c in 1..2) {
+            if (c == 2 && b == 2) break@top
+            print("$a$b$c ")
+        }
+    }
+}
+```
+
+```text
+111 112 121 
+```
+
+## A worked example
+
+Search a pair of nested loops and abandon the inner one as soon as it cannot succeed:
+
+```kotlin
+fun findPairSummingTo(target: Int, xs: List<Int>): Pair<Int, Int>? {
+    outer@ for (a in xs) {
+        for (b in xs) {
+            if (a + b == target) return a to b
+            if (a + b > target) continue@outer
+        }
+    }
+    return null
+}
+
+println(findPairSummingTo(9, listOf(1, 3, 4, 6, 8)))
+println(findPairSummingTo(100, listOf(1, 3, 4, 6, 8)))
+```
+
+```text
+(1, 8)
+null
+```
+
+`return` already leaves everything, so the label is only needed for the "give up on this
+`a`" case. That is the general shape: labels earn their place when you need to *continue*
+an outer loop, and `return` usually covers *breaking* out of one.
+
+Labels work on `while` loops identically:
+
+```kotlin
+var i = 0
+outer@ while (i < 4) {
+    i++
+    var j = 0
+    while (j < 4) {
+        j++
+        if (j == 2) continue@outer
+        print("$i$j ")
+    }
+}
+```
+
+```text
+11 21 31 41 
+```
+
+## Labels on lambdas
+
+Any expression can carry a label, and `return@label` returns from that expression. For a
+lambda, the **implicit** label is the name of the function it was passed to:
+
+```kotlin
+listOf(1, 2, 3, 4, 5).forEach {
+    if (it == 3) return@forEach
+    print(it)
+}
+```
+
+```text
+1245
+```
+
+An explicit label works the same and is clearer when several lambdas nest:
+
+```kotlin
+listOf(1, 2, 3, 4, 5).forEach lit@{
+    if (it == 3) return@lit
+    print(it)
+}
+```
+
+```text
+1245
+```
+
+Both behave like `continue`. There is no label that behaves like `break` inside a lambda —
+for that, wrap the whole thing and return from the wrapper:
+
+```kotlin
+run loop@{
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return@loop
+        print(it)
+    }
+}
+```
+
+```text
+12
+```
+
+<Callout type="warning">
+  Write the label **before** the opening brace, with no space: `forEach lit@{ ... }`, not
+  `forEach @lit { ... }`. And when returning a value, `return@a 1` parses as "return `1` at
+  label `@a`", never as "return the labelled expression `@a 1`".
+</Callout>
+
+A labelled `let` is how you return a value out of the outer of two nested lambdas:
+
+```kotlin
+val found = listOf(listOf(1, 2), listOf(3, 4), listOf(5, 6)).let search@{ rows ->
+    rows.forEach { row ->
+        row.forEach { cell ->
+            if (cell == 4) return@search "found $cell"
+        }
+    }
+    "not found"
+}
+println(found)
+```
+
+```text
+found 4
+```
+
+## Labels on arbitrary expressions
+
+Nothing restricts labels to loops and lambdas. `run label@{ ... }` plus `return@label value`
+is a block that computes a value with early exits:
+
+```kotlin
+val total = run sum@{
+    var acc = 0
+    for (n in 1..10) {
+        acc += n
+        if (acc > 20) return@sum acc
+    }
+    acc
+}
+println(total)
+```
+
+```text
+21
+```
+
+The sum of `1..6` is 21, the first partial sum over 20, so the block exits there.
+
+The related `this@Label` form qualifies a receiver rather than a jump — `this@Connection`
+inside a member extension, `this@outer` in nested receiver lambdas. Same `@`, different job.
+
+## Related
+
+- [break & continue](/control-flow/loops/break-and-continue) — the unlabelled versions
+- [return](/functions/standard-functions/return) — `return@forEach` and non-local return
+- [Lambda Functions](/functions/function-types/lambda-functions) — what the implicit label names
+- [Extension Functions](/functions/extension-functions) — `this@Class` for the dispatch receiver
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/label-loops.kt" />
 
 import { Callout } from 'nextra/components'

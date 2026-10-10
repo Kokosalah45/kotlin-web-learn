@@ -1,19 +1,352 @@
 ---
 title: "Integers"
-description: "Integers in Kotlin."
+description: "Byte, Short, Int and Long: literals, inference, truncating division, silent overflow, bitwise operators and the JVM's boxing cache."
 ---
 
 # Integers
 
 <DocSource docs={["numbers"]} api={["kotlin-stdlib/kotlin/-int/"]} />
 
-Use number types to store and process numeric data, for example, in arithmetic, counters, measurements, and other calculations.
+Four signed integer types, no implicit conversion between them, and **no overflow check
+anywhere**. Division truncates, `Int.MAX_VALUE + 1` wraps to `Int.MIN_VALUE`, and
+`Int.toByte()` keeps the low eight bits — all silently. Those are the three things to watch.
+
+Outputs below come from running `examples/language-basics/integers.kt`.
+
+## The four types
+
+```kotlin
+println("Byte  ${Byte.SIZE_BITS} bits: ${Byte.MIN_VALUE}..${Byte.MAX_VALUE}")
+println("Short ${Short.SIZE_BITS} bits: ${Short.MIN_VALUE}..${Short.MAX_VALUE}")
+println("Int   ${Int.SIZE_BITS} bits: ${Int.MIN_VALUE}..${Int.MAX_VALUE}")
+println("Long  ${Long.SIZE_BITS} bits: ${Long.MIN_VALUE}..${Long.MAX_VALUE}")
+```
+
+```text
+Byte  8 bits: -128..127
+Short 16 bits: -32768..32767
+Int   32 bits: -2147483648..2147483647
+Long  64 bits: -9223372036854775808..9223372036854775807
+```
+
+Use `Int` for whole numbers, `Long` beyond the `Int` range, and `Byte`/`Short` only when an
+API or wire format demands them.
+
+## Literals
+
+Decimal, hexadecimal and binary, with `_` allowed anywhere as a separator, and `L` for
+`Long`:
+
+```kotlin
+val oneBillion: Long = 1_000_000_000
+val hexBytes: Int = 0x7F_EC_DE_5E
+val bytes: Int = 0b01010010_01101001_10010100_10010010
+val oneLong = 1L
+println(oneBillion)
+println(hexBytes)
+println(bytes)
+println(0x0F)
+println(0b00001011)
+```
+
+```text
+1000000000
+2146229854
+1382651026
+15
+11
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  **Kotlin has no octal literals**, and rather than quietly reading `010` as ten it rejects
+  the syntax outright:
+
+  ```text
+  error: leading zeros are not allowed in integer literals.
+  ```
+
+  Which is the right call — in Java `010 == 8`, so code ported across would change meaning
+  silently. Anything that was octal has to be rewritten, usually as `0b` or as a decimal.
 </Callout>
+
+## What gets inferred
+
+Without an explicit type you get `Int` if the value fits, `Long` otherwise:
+
+```kotlin
+val million = 1_000_000
+val threeBillion = 3_000_000_000
+println("${million::class.simpleName} / ${threeBillion::class.simpleName}")
+```
+
+```text
+Int / Long
+```
+
+Declare the type and the compiler range-checks the literal: `val tooBig: Byte = 128` is an
+error, not a wrap.
+
+## Integer division truncates
+
+```kotlin
+println(5 / 2)
+println(5L / 2)
+println(-5 / 2)
+println(5 % 2)
+println(-5 % 2)
+println(5 / 2.0)
+println(5 / 2.toDouble())
+```
+
+```text
+2
+2
+-2
+1
+-1
+2.5
+2.5
+```
+
+Truncation is towards zero, so `-5 / 2` is `-2` and `-5 % 2` is `-1` — the remainder takes
+the sign of the dividend, which is not the mathematical modulo. Use `Math.floorMod` or
+`(a % n + n) % n` if you want a non-negative result.
+
+Make one operand floating-point for a fractional answer. `5 / 2.0` works because of mixed
+arithmetic, not because of a conversion on the `5`.
+
+## Conversions are explicit
+
+`toByte()`, `toShort()`, `toInt()`, `toLong()`, `toFloat()`, `toDouble()`:
+
+```kotlin
+val intValue: Int = 1
+println(intValue.toDouble())
+println(intValue.toLong())
+println(1.5.toLong())
+println((-1.5).toLong())
+```
+
+```text
+1.0
+1
+1
+-1
+```
+
+Float-to-integer **truncates** rather than rounds — `1.5.toLong()` is `1` and
+`(-1.5).toLong()` is `-1`. For rounding use `kotlin.math.roundToInt()`.
+
+In arithmetic expressions the operators convert for you and the wider type wins:
+
+```kotlin
+val intNumber: Int = 1
+val longNumber: Long = 1000
+val result = intNumber + longNumber
+println("$result is a ${result::class.simpleName}")
+println((1.toByte() + 1.toByte())::class.simpleName)
+```
+
+```text
+1001 is a Long
+Int
+```
+
+<Callout type="warning">
+  `Byte + Byte` is an `Int`. There is no narrow-plus-narrow overload, so
+  `val b: Byte = b1 + b2` does not compile and `val b: Byte = (b1 + b2).toByte()` is the
+  fix — which also silently wraps. Assigning a `Long` result to an `Int` is likewise an
+  error, not a truncation.
+</Callout>
+
+## Integer literal types
+
+An unsuffixed integer literal has a special internal type until the context pins it down.
+That is usually invisible, and occasionally not:
+
+```kotlin
+fun List<Any>.logTypes() {
+    println(joinToString(" | ") { it::class.simpleName ?: "Unknown" })
+}
+
+listOf(1, 2).logTypes()
+listOf(1L, 2L).logTypes()
+listOf(1, 2L).logTypes()
+listOf(1.toInt(), 2L).logTypes()
+val longValues: List<Long> = listOf(1, 2)
+longValues.logTypes()
+```
+
+```text
+Int | Int
+Long | Long
+Long | Long
+Int | Long
+Long | Long
+```
+
+The third line is the one to notice: a single `2L` turns the literal `1` into a `Long`, so
+`listOf(1, 2L)` is a `List<Long>`. `Int` and `Long` print identically, so nothing warns
+you. State the type (`val xs: List<Long>`) or convert explicitly (`1.toInt()`) when it
+matters; `val intValues: List<Int> = listOf(1, 2L)` is at least a compile error.
+
+## Overflow is silent
+
+```kotlin
+val maxInt: Int = 2147483647
+println(maxInt + 1)
+println(Int.MAX_VALUE + Int.MAX_VALUE)
+println(Long.MAX_VALUE + 1)
+```
+
+```text
+-2147483648
+-2
+-9223372036854775808
+```
+
+<Callout type="warning">
+  No exception, no warning: the value wraps. The arithmetic that bites hardest is a
+  millisecond or byte count that fits in `Int` in testing and does not in production.
+  `Math.addExact` and friends throw instead, and `Long` buys you a factor of four billion.
+</Callout>
+
+Negation overflows too, because `-Int.MIN_VALUE` is not representable:
+
+```kotlin
+val min = Int.MIN_VALUE
+println(-min)
+println(Math.abs(Int.MIN_VALUE))
+```
+
+```text
+-2147483648
+-2147483648
+```
+
+`Math.abs` of the most negative `Int` is **negative**. Any code that assumes `abs(x) >= 0`
+has a bug for exactly one input.
+
+## Narrowing loses data
+
+```kotlin
+val large: Int = 130
+println(large.toByte())
+println(300.toByte())
+println(65536.toShort())
+println(1_000_000_000_000L.toInt())
+```
+
+```text
+-126
+44
+0
+-727379968
+```
+
+`toByte()` keeps the low 8 bits and reinterprets the top one as the sign, so `130` becomes
+`-126` and `65536.toShort()` becomes `0`. These conversions never fail — they just produce
+a different number.
+
+## Bitwise operations
+
+Available on `Int` and `Long` as infix functions, plus `inv()`:
+
+| Function | Meaning |
+| :--- | :--- |
+| `shl` | signed shift left |
+| `shr` | signed shift right (sign-extending) |
+| `ushr` | unsigned shift right (zero-filling) |
+| `and`, `or`, `xor` | bitwise AND, OR, XOR |
+| `inv()` | bitwise inversion |
+
+```kotlin
+val x = 1
+println(x shl 2)
+println(x shl 31)
+println(0b1100 and 0b1010)
+println(0b1100 or 0b1010)
+println(0b1100 xor 0b1010)
+println(x.inv())
+println(-8 shr 1)
+println(-8 ushr 1)
+```
+
+```text
+4
+-2147483648
+8
+14
+6
+-2
+-4
+2147483644
+```
+
+`1 shl 31` is negative — that bit is the sign bit. And `shr` keeps the sign while `ushr`
+does not, which is the whole reason both exist.
+
+Being infix functions, these bind **looser than `+`**: `1 shl 2 + 3` is `1 shl 5`. See
+[Standard functions](/functions/standard-functions#infix-notation).
+
+## Boxing and the JVM's small-integer cache
+
+An `Int?` is a boxed `java.lang.Integer`, and the JVM caches boxed values from `-128` to
+`127`. So referential equality depends on the value:
+
+```kotlin
+val score: Int = 100
+val savedScore: Int? = score
+val displayedScore: Int? = score
+println(savedScore === displayedScore)
+
+val big: Int = 10000
+val savedBig: Int? = big
+val displayedBig: Int? = big
+println(savedBig === displayedBig)
+println(savedBig == displayedBig)
+```
+
+```text
+true
+false
+true
+```
+
+The boundary is exactly where the documentation says:
+
+```kotlin
+for (n in listOf(126, 127, 128, 129)) {
+    val a: Int? = n
+    val b: Int? = n
+    println("$n: === is ${a === b}")
+}
+```
+
+```text
+126: === is true
+127: === is true
+128: === is false
+129: === is false
+```
+
+<Callout type="warning">
+  This is the classic "works in tests, fails in production" bug: `===` on two `Int?`
+  variables passes for small values and fails above 127. Always compare numbers with `==`.
+</Callout>
+
+## Related
+
+- [Floats](/language-basics/basic-types/floats) — the fractional half, with different hazards
+- [Unsigned Integers](/language-basics/basic-types/unsigned-integers) — using the whole bit range
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — `==` versus `===`
+- [Ranges](/language-basics/ranges) — `1..10` and friends
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/integers.kt" />
 
 import { Callout } from 'nextra/components'

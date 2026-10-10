@@ -1,19 +1,264 @@
 ---
 title: "Type Inference"
-description: "Type Inference in Kotlin."
+description: "Where Kotlin infers a type, where it refuses to, and the inferences that are not what you meant."
 ---
 
 # Type Inference
 
-<DocSource docs={["basic-syntax","types-overview"]} />
+<DocSource docs={["basic-syntax", "types-overview"]} />
 
-This is a collection of basic syntax elements with examples. At the end of every section, you'll find a link to a detailed description of the related topic.
+Kotlin infers a type wherever it can see enough to be sure: variable declarations with an
+initialiser, single-expression function bodies, lambda parameters, generic type arguments.
+It deliberately refuses in two places — a function with a block body, and a declaration with
+no initialiser — and there are a handful of cases where it succeeds and gives you something
+other than what you had in mind.
+
+Outputs below come from running `examples/language-basics/type-inference.kt`.
+
+## From the initialiser
+
+```kotlin
+val n = 5
+val d = 5.0
+val f = 5.0f
+val l = 5L
+val s = "five"
+val c = '5'
+val b = true
+for (v in listOf<Any>(n, d, f, l, s, c, b)) println("$v -> ${v::class.simpleName}")
+```
+
+```text
+5 -> Int
+5.0 -> Double
+5.0 -> Float
+5 -> Long
+five -> String
+5 -> Char
+true -> Boolean
+```
+
+Note the literal suffixes are doing the work: `5.0` is a `Double` and `5.0f` a `Float`,
+`5` an `Int` and `5L` a `Long`. Both pairs print the same text, so the only way to tell is
+to ask.
+
+## For functions
+
+A single-expression body is inferred; a block body is not:
+
+```kotlin
+// A single-expression function's return type is inferred.
+fun sum(a: Int, b: Int) = a + b
+
+// A block body's is not, so it has to be declared.
+fun sumBlock(a: Int, b: Int): Int {
+    return a + b
+}
+```
+
+```text
+42
+42
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  This is a deliberate design choice, not a limitation. A block body's control flow can be
+  involved enough that the return type would be unclear to a *reader* even where the
+  compiler could work it out, so Kotlin requires it in writing. See
+  [Standard functions](/functions/standard-functions#block-body-or-single-expression).
 </Callout>
+
+An inferred type is the narrowest one that fits, which is not always the one you want:
+
+```kotlin
+fun half(x: Int) = x / 2.0
+fun halfAsNumber(x: Int): Number = x / 2.0
+
+println(half(5))
+println(halfAsNumber(5))
+println(half(5)::class.simpleName)
+```
+
+```text
+2.5
+2.5
+Double
+```
+
+Identical results, different API: `half` promises a `Double` forever, `halfAsNumber` keeps
+the freedom to return any `Number`. On a public API, declare the type you mean to support.
+
+## For lambdas and chains
+
+```kotlin
+val double = { x: Int -> x * 2 }
+println(double(21))
+println(listOf(1, 2, 3).map { it.toString() })
+println(listOf(1, 2, 3).map { it.toString() }::class.simpleName)
+```
+
+```text
+42
+[1, 2, 3]
+ArrayList
+```
+
+```kotlin
+val lengths = listOf("one", "three", "five").map { it.length }.filter { it > 3 }
+println(lengths)
+println(lengths::class.simpleName)
+```
+
+```text
+[5, 4]
+ArrayList
+```
+
+Inference flows through the whole chain: `List<String>` → `List<Int>` → `List<Int>`, with no
+type written anywhere.
+
+## For generic calls
+
+The element type comes from the arguments, widening to their least common supertype:
+
+```kotlin
+println(listOf(1, 2, 3).map { it::class.simpleName })
+println(listOf(1, "two").map { it::class.simpleName })
+println(listOf(1, null).map { it?.let { v -> v::class.simpleName } })
+```
+
+```text
+[Int, Int, Int]
+[Int, String]
+[Int, null]
+```
+
+```kotlin
+open class Animal2
+class Dog2 : Animal2()
+class Cat2 : Animal2()
+
+val animals = listOf(Dog2(), Cat2())
+println(animals.map { it::class.simpleName })
+val widened: List<Animal2> = animals
+println(widened.size)
+```
+
+```text
+[Dog2, Cat2]
+2
+```
+
+`listOf(Dog2(), Cat2())` is a `List<Animal2>`. Mixing unrelated types widens all the way to
+`Any`, which usually means the call site lost the type information you wanted — annotate
+the declaration when that matters.
+
+## Where inference will not help
+
+```kotlin
+// A declaration with no initializer needs a type.
+val later: Int
+later = 3
+println(later)
+
+// An empty collection has nothing to infer from.
+val empty = listOf<String>()
+val emptyLeft: List<String> = listOf()
+```
+
+```text
+3
+0
+0
+```
+
+Either side works for an empty collection — `listOf<String>()` or
+`val x: List<String> = listOf()` — but one of them is required.
+
+## Numeric inference is worth pinning down
+
+```kotlin
+val asInt = 1
+val asLong: Long = 1
+println("${asInt::class.simpleName} / ${asLong::class.simpleName}")
+
+val sneaky = listOf(1, 2L)
+println(sneaky.map { it::class.simpleName })
+
+val pinned: List<Number> = listOf(1.toInt(), 2L)
+println(pinned.map { it::class.simpleName })
+```
+
+```text
+Int / Long
+[Long, Long]
+[Int, Long]
+```
+
+<Callout type="warning">
+  `listOf(1, 2L)` is a `List<Long>` — the unsuffixed `1` is adopted into `Long` by its
+  neighbour. Since `Int` and `Long` print identically, nothing shows you this happened until
+  something downstream cares. Annotate the declaration (`val xs: List<Long>`) or convert
+  explicitly (`1.toInt()`). An annotation also turns the mistake into an error:
+  `val xs: List<Int> = listOf(1, 2L)` does not compile. More under
+  [Integers](/language-basics/basic-types/integers#integer-literal-types).
+</Callout>
+
+## Inference does not work backwards
+
+The declared type of a variable does not change how its initialiser is evaluated:
+
+```kotlin
+val explicitDouble: Double = 1 / 2.0
+val wrong: Double = (1 / 2).toDouble()
+println(explicitDouble)
+println(wrong)
+```
+
+```text
+0.5
+0.0
+```
+
+`1 / 2` is integer division and gives `0` whatever you assign it to. Declaring the variable
+`Double` converts the *result*, not the operands.
+
+## var fixes the type at declaration
+
+An inferred type is still a type, and a `var` keeps it for life:
+
+```kotlin
+var count = 0
+count = 42
+println(count)
+// count = "forty-two" // Error: assignment type mismatch
+
+var anything: Any = 0
+anything = "forty-two"
+println(anything)
+```
+
+```text
+42
+forty-two
+```
+
+Which is the practical answer to "should I write the type out?": write it when the variable
+outlives the expression that created it, when the inferred type is wider or narrower than
+your intent, and on anything public. Leave it out for locals whose initialiser is right
+there.
+
+## Related
+
+- [Data types](/language-basics/data-types) — what the inferred types are
+- [Variables](/language-basics/variables) — declaring with and without a type
+- [Type Checks & Casts](/language-basics/data-types/type-checks-and-casts) — narrowing at runtime
+- [Standard functions](/functions/standard-functions) — return-type inference rules
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/type-inference.kt" />
 
 import { Callout } from 'nextra/components'

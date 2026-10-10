@@ -1,19 +1,187 @@
 ---
 title: "Member Functions"
-description: "Member Functions in Kotlin."
+description: "Functions declared inside a class or object: virtual dispatch, companion objects, and why a member always beats an extension."
 ---
 
 # Member Functions
 
-<DocSource docs={["functions","classes"]} />
+<DocSource docs={["functions", "classes"]} />
 
-Like other object-oriented languages, Kotlin uses _classes_ to encapsulate data (properties) and behavior (functions) for reusable, structured code.
+A member function is declared inside a class or object body and is called through an
+instance with `.`. Two things distinguish members from the other kinds of function: they
+are dispatched **virtually** (the runtime type decides which body runs), and they **win**
+against an extension function with the same signature.
+
+Outputs below come from running `examples/functions/member-functions.kt`.
+
+## Declaring and calling
+
+Members see the instance's state and each other without a qualifier; `this` is available
+but optional:
+
+```kotlin
+class Stream(private val bytes: ByteArray) {
+    private var position = 0
+
+    fun read(): Int {
+        if (position >= bytes.size) return -1
+        return bytes[position++].toInt()
+    }
+
+    fun remaining() = bytes.size - position
+
+    fun summary() = "read ${this.position} of ${bytes.size}, ${remaining()} left"
+}
+
+val stream = Stream(byteArrayOf(10, 20, 30))
+println(stream.read())
+println(stream.read())
+println(stream.summary())
+println(stream.read())
+println(stream.read())
+```
+
+```text
+10
+20
+read 2 of 3, 1 left
+30
+-1
+```
+
+Everything from [standard functions](/functions/standard-functions) applies unchanged:
+default values, named arguments, single-expression bodies, `vararg`, `infix`, generics.
+
+## Dispatch is virtual
+
+Mark the base function `open` and the subclass `override`, and the *runtime* type picks the
+body — including when the call comes from inside another member of the base class:
+
+```kotlin
+open class Greeter(val name: String) {
+    open fun greet() = "Hello, $name"
+    fun greetTwice() = "${greet()} / ${greet()}"
+}
+
+class LoudGreeter(name: String) : Greeter(name) {
+    override fun greet() = "HELLO, ${name.uppercase()}"
+}
+
+val greeters: List<Greeter> = listOf(Greeter("Kodee"), LoudGreeter("Kodee"))
+for (g in greeters) println(g.greet())
+for (g in greeters) println(g.greetTwice())
+```
+
+```text
+Hello, Kodee
+HELLO, KODEE
+Hello, Kodee / Hello, Kodee
+HELLO, KODEE / HELLO, KODEE
+```
+
+`greetTwice()` is not `open` and is never overridden, yet it produces different text for the
+two instances: the `greet()` it calls is resolved at runtime. Hold on to this — it is exactly
+what [extension functions](/functions/extension-functions) do **not** do.
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Kotlin classes and members are `final` by default. A function is only overridable if you
+  write `open` on it *and* on its class, which is the reverse of Java's default.
 </Callout>
+
+## Functions without an instance
+
+A function that belongs to the class rather than to an instance goes in a `companion
+object`, and is called through the class name:
+
+```kotlin
+class Account private constructor(val id: String) {
+    fun describe() = "Account($id)"
+
+    companion object {
+        var created = 0
+            private set
+
+        fun open(id: String): Account {
+            created++
+            return Account(id)
+        }
+    }
+}
+
+println(Account.open("A-1").describe())
+println(Account.open("B-2").describe())
+println(Account.created)
+```
+
+```text
+Account(A-1)
+Account(B-2)
+2
+```
+
+A companion object can reach the class's `private` constructor, which is what makes the
+factory-function pattern work. When the whole type is a singleton, skip the class and use an
+`object` declaration — its members are the only members:
+
+```kotlin
+object Registry {
+    private val names = mutableListOf<String>()
+    fun register(name: String) = names.add(name)
+    fun all(): List<String> = names
+}
+
+Registry.register("first")
+Registry.register("second")
+println(Registry.all())
+```
+
+```text
+[first, second]
+```
+
+## Members beat extensions
+
+If a member function and an extension function have the same receiver type, the same name
+and compatible arguments, **the member is called**:
+
+```kotlin
+class Conflict {
+    fun describe() = "member function"
+}
+
+fun Conflict.describe() = "extension function"
+fun Conflict.describe(index: Int) = "extension function #$index"
+
+println(Conflict().describe())
+println(Conflict().describe(1))
+```
+
+```text
+member function
+extension function #1
+```
+
+<Callout type="warning">
+  This is the rule that bites when you upgrade a library: your `fun Foo.bar()` extension
+  works fine until `Foo` gains its own `bar()` member, and then every call site silently
+  switches to the library's implementation with nothing failing to compile.
+
+  kotlinc does flag it, but only as a warning, and only on the extension's own declaration:
+
+  ```text
+  warning: this extension is shadowed by a member: 'fun describe(): String' defined in 'Conflict'.
+  ```
+
+  So the signal arrives at the one place you are not looking, in a build that still
+  succeeds. Extensions can still *overload* a member with a different signature, as
+  `describe(index: Int)` does above — that case is not shadowed and draws no warning.
+</Callout>
+
+## Related
+
+- [Defining Classes](/classes-and-objects/defining-classes) — the class the members live in
+- [Methods](/classes-and-objects/class-members/methods) — the same topic from the class side
+- [Extension Functions](/functions/extension-functions) — adding functions from outside
+- [Local Functions](/functions/local-functions) — helpers scoped to one function
 
 import { Callout } from 'nextra/components'

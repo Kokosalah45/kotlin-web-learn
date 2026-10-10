@@ -1,19 +1,270 @@
 ---
 title: "Floats"
-description: "Floats in Kotlin."
+description: "Float and Double, IEEE 754 behaviour, NaN and signed zero — and how both change when the value goes through a generic type."
 ---
 
 # Floats
 
 <DocSource docs={["numbers"]} api={["kotlin-stdlib/kotlin/-double/"]} />
 
-Use number types to store and process numeric data, for example, in arithmetic, counters, measurements, and other calculations.
+`Float` and `Double` follow IEEE 754, so the usual floating-point rules apply: `0.1 + 0.2`
+is not `0.3`, dividing by zero gives `Infinity` rather than an exception, and `NaN` is not
+equal to itself. Kotlin adds one twist of its own — all three of those statements **reverse**
+when the value is handled through a generic type.
 
-<Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+Outputs below come from running `examples/language-basics/floats.kt`.
+
+## The two types
+
+```kotlin
+println("Float  ${Float.SIZE_BITS} bits, 24 significant bits, 6-7 decimal digits")
+println("Double ${Double.SIZE_BITS} bits, 53 significant bits, 15-16 decimal digits")
+println("Float range:  ${Float.MIN_VALUE} .. ${Float.MAX_VALUE}")
+println("Double range: ${Double.MIN_VALUE} .. ${Double.MAX_VALUE}")
+```
+
+```text
+Float  32 bits, 24 significant bits, 6-7 decimal digits
+Double 64 bits, 53 significant bits, 15-16 decimal digits
+Float range:  1.4E-45 .. 3.4028235E38
+Double range: 4.9E-324 .. 1.7976931348623157E308
+```
+
+`MIN_VALUE` is the **smallest positive** value, not the most negative one — the most
+negative is `-MAX_VALUE`. That differs from the integer types and is a common slip.
+
+## Literals
+
+A decimal point or an exponent makes a literal floating-point, and the default is `Double`.
+`f` or `F` makes it a `Float`:
+
+```kotlin
+val pi = 3.14
+val avogadro = 6.02214076e23
+val eFloat = 2.7182817f
+println("${pi::class.simpleName} $pi")
+println("${avogadro::class.simpleName} $avogadro")
+println("${eFloat::class.simpleName} $eFloat")
+```
+
+```text
+Double 3.14
+Double 6.02214076E23
+Float 2.7182817
+```
+
+A `Float` literal with more precision than `Float` can hold is rounded, silently:
+
+```kotlin
+val tooPrecise = 3.141592653589793f
+println(tooPrecise)
+println(3.141592653589793)
+println(0.1f)
+println(0.1f.toDouble())
+```
+
+```text
+3.1415927
+3.141592653589793
+0.1
+0.10000000149011612
+```
+
+<Callout type="warning">
+  The last two lines are the same stored value printed two ways. `0.1f` prints as `0.1`
+  because `toString` shows just enough digits to round-trip a `Float`; widening it to
+  `Double` exposes the error that was always there. Widening a `Float` never recovers
+  precision it never had, so a `Float` field that later feeds `Double` arithmetic is a
+  recipe for off-by-a-little bugs.
 </Callout>
+
+## Arithmetic
+
+```kotlin
+println(3.14 * 2.71)
+println(10.0 / 3)
+println(0.1 + 0.2)
+println(0.1 + 0.2 == 0.3)
+println((0.1 + 0.2) - 0.3)
+```
+
+```text
+8.5094
+3.3333333333333335
+0.30000000000000004
+false
+5.551115123125783E-17
+```
+
+Never compare floating-point results with `==`. Compare against a tolerance, or use
+`BigDecimal` when the values are money:
+
+```kotlin
+val a = 0.1 + 0.2
+val b = 0.3
+println(abs(a - b) < 1e-9)
+println(java.math.BigDecimal("0.1").add(java.math.BigDecimal("0.2")))
+```
+
+```text
+true
+0.3
+```
+
+## Division by zero does not throw
+
+```kotlin
+println(2.0 / 0.0)
+println(-2.0 / 0.0)
+println(0.0 / 0.0)
+println(Double.MAX_VALUE * 2)
+println(runCatching { 2 / 0 }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+Infinity
+-Infinity
+NaN
+Infinity
+ArithmeticException
+```
+
+<Callout type="warning">
+  Integer division by zero throws `ArithmeticException`; floating-point division by zero
+  does not. It produces `Infinity` or `NaN`, which then propagates through every
+  calculation downstream without complaint, so the symptom appears far from the cause. If a
+  divisor can be zero, check it — the exception you never get is the expensive one. Overflow
+  behaves the same way: `Double.MAX_VALUE * 2` is `Infinity`, not a wrap.
+</Callout>
+
+## NaN
+
+```kotlin
+val nan = Double.NaN
+println(nan == nan)
+println(nan != nan)
+println(nan.isNaN())
+println(nan < 1.0)
+println(nan > 1.0)
+println(nan + 1.0)
+```
+
+```text
+false
+true
+true
+false
+false
+NaN
+```
+
+`NaN` compares `false` against everything, **including itself** — which is why
+`x != x` is a valid NaN test and why `isNaN()` exists. It is also neither less than nor
+greater than `1.0`, so a comparison-based sort or a `maxOf` over data containing `NaN`
+gives results that depend on the order of comparisons. And it swallows arithmetic: one
+`NaN` anywhere in a sum makes the sum `NaN`.
+
+## Signed zero
+
+```kotlin
+println(0.0 == -0.0)
+println(1.0 / 0.0)
+println(1.0 / -0.0)
+println(0.0.toString())
+println((-0.0).toString())
+```
+
+```text
+true
+Infinity
+-Infinity
+0.0
+-0.0
+```
+
+`0.0 == -0.0` is `true`, yet they are distinguishable: they print differently and dividing
+by them gives opposite infinities. So two values that compare equal can produce different
+results.
+
+## Through a generic type, the rules reverse
+
+This is the Kotlin-specific part. When the operands are **statically** `Float` or `Double`,
+the operators follow IEEE 754. When they are reached through `Any`, `Comparable<...>` or a
+`Collection<T>`, Kotlin uses `equals()` and `compareTo()` instead — and those are defined
+so that ordering is total:
+
+- `NaN` **is** equal to itself
+- `NaN` is greater than everything, including `POSITIVE_INFINITY`
+- `-0.0` is **less than** `0.0`
+
+```kotlin
+fun generalizedEquals(a: Any, b: Any): Boolean = a == b
+
+println(generalizedEquals(Double.NaN, Double.NaN))
+println(generalizedEquals(0.0, -0.0))
+println(listOf(Double.NaN).contains(Double.NaN))
+println(setOf(0.0, -0.0).size)
+println(listOf(1.0, Double.NaN, Double.POSITIVE_INFINITY, -0.0, 0.0).sorted())
+```
+
+```text
+true
+false
+true
+2
+[-0.0, 0.0, 1.0, Infinity, NaN]
+```
+
+<Callout type="warning">
+  Compare these to the previous two sections. `Double.NaN == Double.NaN` is `false`, but
+  `listOf(Double.NaN).contains(Double.NaN)` is `true`. `0.0 == -0.0` is `true`, but a `Set`
+  holds both. The same two values, two different answers, decided by the **static type** at
+  the comparison site — so refactoring `Double` into a generic parameter can change
+  behaviour with no change to the logic.
+
+  The generic behaviour is the more useful one: it is what lets `sorted()` produce a stable
+  total order instead of undefined output.
+</Callout>
+
+## Conversions
+
+```kotlin
+println(1.9.toInt())
+println((-1.9).toInt())
+println(1.9.roundToInt())
+println((-1.9).roundToInt())
+println(1.5f.toDouble())
+println(1.1f.toDouble())
+println(Double.NaN.toInt())
+println(Double.POSITIVE_INFINITY.toInt())
+```
+
+```text
+1
+-1
+2
+-2
+1.5
+1.100000023841858
+0
+2147483647
+```
+
+`toInt()` truncates towards zero; `kotlin.math.roundToInt()` rounds. And the last two lines
+are worth remembering: `NaN.toInt()` is **`0`** and `Infinity.toInt()` is `Int.MAX_VALUE`.
+Neither throws, so a bad computation can arrive at a database as a plausible-looking number.
+
+## Related
+
+- [Integers](/language-basics/basic-types/integers) — where overflow wraps instead
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Comparisons & Comparators](/collection-operations/comparisons-and-comparators) — the total order `sorted()` uses
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — `==` versus `equals()`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/floats.kt" />
 
 import { Callout } from 'nextra/components'

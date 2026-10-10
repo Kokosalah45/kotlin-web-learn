@@ -1,19 +1,304 @@
 ---
 title: "Characters"
-description: "Characters in Kotlin."
+description: "Char as a UTF-16 code unit, escape sequences, Char arithmetic, and the code / digitToInt distinction."
 ---
 
 # Characters
 
 <DocSource docs={["characters"]} api={["kotlin-stdlib/kotlin/-char/"]} />
 
-The [`Char`](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-char/) type represents a single character as a UTF-16 code unit.
+A `Char` is **one UTF-16 code unit**, not one character. For most text that is the same
+thing; for emoji and some historic scripts it is half of one. `Char` is also not a numeric
+type, though it does arithmetic with `Int` — and the number you get from `'7'` depends
+entirely on which function you call.
+
+Outputs below come from running `examples/language-basics/characters.kt`.
+
+## Declaring
+
+Single quotes, exactly one code unit:
+
+```kotlin
+val letter: Char = 'a'
+val digit = '1'
+val symbol = '!'
+val space = ' '
+val separator = ':'
+println("$letter $digit $symbol [$space] $separator")
+println(digit::class.simpleName)
+```
+
+```text
+a 1 ! [ ] :
+Char
+```
+
+`'AB'` and `''` are both compile errors. For more than one character use a
+[String](/language-basics/basic-types/strings), which is double-quoted.
+
+## Escape sequences
+
+| Sequence | Means |
+| :--- | :--- |
+| `\t` | tab |
+| `\b` | backspace |
+| `\n` | newline (LF) |
+| `\r` | carriage return (CR) |
+| `\'` | single quote |
+| `\"` | double quote |
+| `\\` | backslash |
+| `\$` | dollar sign |
+
+```kotlin
+println("tab:[\t] newline below:")
+println("line1\nline2")
+println("quote \" apostrophe ' backslash \\ dollar \$")
+val newLine = '\n'
+val dollar = '\$'
+val backslash = '\\'
+println("codes: ${newLine.code} ${dollar.code} ${backslash.code}")
+```
+
+```text
+tab:[	] newline below:
+line1
+line2
+quote " apostrophe ' backslash \ dollar $
+codes: 10 36 92
+```
+
+`\$` is the Kotlin-specific one: `$` starts a
+[string template](/language-basics/printing-data/string-templates), so a literal dollar has
+to be escaped. That list is **complete** — there is no `\e`, no `\0` and no `\xNN`; an
+arbitrary code unit is written `\uNNNN`.
+
+## Unicode escapes
+
+```kotlin
+val unicodeNumber = '\u0031'
+println(unicodeNumber)
+println(unicodeNumber == '1')
+val eAcute = '\u00e9'
+println(eAcute.code)
+println(eAcute == 'e')
+println('\uFFFF'.code)
+println('\u0000'.code)
+```
+
+```text
+1
+true
+233
+false
+65535
+0
+```
+
+A `Char` covers `\u0000` to `\uFFFF` — the Basic Multilingual Plane, which is almost every
+modern script. And `\u00e9` (`é`) is not `e`: comparison is by code unit, with no normalisation and no
+locale awareness.
+
+## One Char is not one character
+
+Anything outside the BMP is stored as a **surrogate pair** — two `Char` values that only
+mean something together:
+
+```kotlin
+// U+1F966 BROCCOLI, outside the Basic Multilingual Plane
+val emoji = "\uD83E\uDD66"
+println(emoji.length)
+println(emoji[0].code)
+println(emoji[1].code)
+println(emoji[0].isHighSurrogate())
+println(emoji[1].isLowSurrogate())
+println(emoji.codePointCount(0, emoji.length))
+println(emoji.codePointAt(0))
+println(emoji.codePointAt(0) > 0xFFFF)
+```
+
+```text
+2
+55358
+56678
+true
+true
+1
+129382
+true
+```
+
+<Callout type="warning">
+  `length` is `2` for one emoji, and neither `Char` is meaningful alone. So `s.length` is a
+  count of code units, `s.reversed()` can corrupt text, `s[0]` can return half a character,
+  and `s.take(1)` can cut a pair in two. When input may be arbitrary text, work in **code
+  points** — `codePointAt`, `codePointCount`, `String(Character.toChars(cp))` — or in
+  grapheme clusters if you are measuring what a reader would call a character.
+</Callout>
+
+## Comparison is by Unicode value
+
+```kotlin
+println('a' < 'b')
+println('c' > 'd')
+println('A' == 'a')
+println('A' < 'a')
+println('Z' < 'a')
+```
+
+```text
+true
+false
+false
+true
+true
+```
+
+`'Z' < 'a'` holds because uppercase letters occupy a lower ASCII range — which is why
+sorting raw text puts `Zebra` before `apple`. Use `compareTo(other, ignoreCase = true)` or
+a locale-aware `Collator` for human-facing order.
+
+## Inspection and case
+
+```kotlin
+val myChar = 'A'
+println(myChar.isDigit())
+println(myChar.isUpperCase())
+println(myChar.isLetter())
+println(myChar.isWhitespace())
+println(myChar.lowercaseChar())
+```
+
+```text
+false
+true
+true
+false
+a
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  `uppercase()` on a `Char` returns a **`String`**, not a `Char`, because some characters do
+  not have a single-character uppercase form:
+
+  ```kotlin
+  // U+00DF LATIN SMALL LETTER SHARP S
+  println('\u00df'.uppercase())
+  println('\u00df'.uppercase().length)
+  println('\u00df'.uppercaseChar().code)
+  println('\u00df'.code)
+  ```
+
+  ```text
+  SS
+  2
+  223
+  223
+  ```
+
+  `uppercase()` gives `"SS"`, two characters. `uppercaseChar()` has to return one `Char`, so
+  it gives back `223` — the character unchanged. Reach for `uppercase()` unless you have
+  a reason not to.
 </Callout>
+
+## Char arithmetic
+
+Adding or subtracting an `Int` gives another `Char`; subtracting two `Char`s gives an `Int`:
+
+```kotlin
+val a = 'a'
+println(a + 1)
+println(a + 2)
+println(a - 32)
+println('z' - 'a')
+println(('a'..'e').toList())
+```
+
+```text
+b
+c
+A
+25
+[a, b, c, d, e]
+```
+
+These follow Unicode values, not alphabet rules for any language — `a - 32` happens to be
+`A` only because of how ASCII is laid out.
+
+`++` and `--` work in both prefix and postfix form:
+
+```kotlin
+var c = 'A'
+c += 10
+println(c)
+println(++c)
+println(c++)
+println(c)
+println(--c)
+println(c--)
+println(c)
+```
+
+```text
+K
+L
+L
+M
+L
+L
+K
+```
+
+## code or digitToInt
+
+The two conversions that get confused:
+
+```kotlin
+println('7'.code)
+println('7'.digitToInt())
+println('7'.toString().toInt())
+```
+
+```text
+55
+7
+7
+```
+
+<Callout type="warning">
+  `'7'.code` is **55** — the Unicode code point of the character `7`. The numeric value `7`
+  comes from `digitToInt()`. Getting these the wrong way round is the classic off-by-48 bug.
+</Callout>
+
+```kotlin
+println('A'.code)
+println(65.toChar())
+println('f'.digitToInt(16))
+println('x'.digitToIntOrNull())
+println(runCatching { 'x'.digitToInt() }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+65
+A
+15
+null
+IllegalArgumentException
+```
+
+`digitToInt(radix)` handles hex, and `digitToIntOrNull()` is the safe form for input you do
+not control.
+
+## Related
+
+- [Strings](/language-basics/basic-types/strings) — sequences of these
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Integers](/language-basics/basic-types/integers) — what `.code` gives you
+- [Ranges](/language-basics/ranges) — `'a'..'z'` is a `CharRange`
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/characters.kt" />
 
 import { Callout } from 'nextra/components'

@@ -1,19 +1,227 @@
 ---
 title: "Higher-order Functions"
-description: "Higher-order Functions in Kotlin."
+description: "Functions that take or return functions, what inline changes, and the non-local return and reified type parameters it enables."
 ---
 
 # Higher-order Functions
 
-<DocSource docs={["lambdas","inline-functions"]} />
+<DocSource docs={["lambdas", "inline-functions"]} />
 
-Kotlin functions are [first-class](https://en.wikipedia.org/wiki/First-class_function), which means they can be stored in variables and data structures, and can be passed as arguments to and returned from other higher-order functions. You can perform any operations on functions that are possible for other non-function values.
+A higher-order function takes a function as a parameter or returns one. Most of the Kotlin
+standard library is higher-order — `map`, `filter`, `fold`, `forEach`, `let`, `use`. The
+part worth understanding is `inline`, because it is the difference between a lambda
+allocating an object and a lambda disappearing into the call site, and it is what makes a
+bare `return` or `continue` legal inside one.
+
+Outputs below come from running `examples/functions/higher-order-functions.kt`.
+
+## Taking a function
+
+`fold` is the canonical example. The `combine` parameter has function type `(R, T) -> R`:
+
+```kotlin
+fun <T, R> Collection<T>.myFold(
+    initial: R,
+    combine: (acc: R, nextElement: T) -> R,
+): R {
+    var accumulator: R = initial
+    for (element: T in this) {
+        accumulator = combine(accumulator, element)
+    }
+    return accumulator
+}
+
+val items = listOf(1, 2, 3, 4, 5)
+val sum = items.myFold(0) { acc: Int, i: Int ->
+    print("acc = $acc, i = $i, ")
+    val result = acc + i
+    println("result = $result")
+    result
+}
+println(sum)
+```
+
+```text
+acc = 0, i = 1, result = 1
+acc = 1, i = 2, result = 3
+acc = 3, i = 3, result = 6
+acc = 6, i = 4, result = 10
+acc = 10, i = 5, result = 15
+15
+```
+
+The lambda's parameter types are usually inferable, and a function reference works wherever
+a lambda does:
+
+```kotlin
+println(items.myFold("Elements:") { acc, i -> acc + " " + i })
+println(items.myFold(1, Int::times))
+```
+
+```text
+Elements: 1 2 3 4 5
+120
+```
+
+## Returning a function
+
+A function returning a function type is how you build a configured operation once and reuse
+it:
+
+```kotlin
+fun applyTwice(x: Int, f: (Int) -> Int): Int = f(f(x))
+fun multiplierOf(factor: Int): (Int) -> Int = { it * factor }
+
+println(applyTwice(5) { it + 3 })
+val triple = multiplierOf(3)
+println(triple(7))
+println(multiplierOf(10)(7))
+println(items.map(multiplierOf(2)))
+```
+
+```text
+11
+21
+70
+[2, 4, 6, 8, 10]
+```
+
+`multiplierOf(10)(7)` is two calls: the first returns a function, the second invokes it.
+
+## What inline actually does
+
+Each function value is an object that captures a closure, so a higher-order function costs
+an allocation and a virtual call per lambda. `inline` copies the function's body — and the
+lambda's body — into the call site instead. You can see it in a stack trace:
+
+```kotlin
+fun notInlined(block: () -> Unit) { block() }
+inline fun inlined(block: () -> Unit) { block() }
+
+fun whereAmI(label: String) {
+    val frame = Thread.currentThread().stackTrace[2]
+    println("$label -> ${frame.className.substringAfterLast('.')}.${frame.methodName}")
+}
+
+notInlined { whereAmI("non-inline") }
+inlined { whereAmI("inline") }
+```
+
+```text
+non-inline -> Higher_order_functionsKt.main$lambda$3
+inline -> Higher_order_functionsKt.main
+```
+
+The non-inline lambda has its own synthetic method, `main$lambda$3`; the inline one has no
+frame of its own at all — its body was compiled directly into `main`.
+
+<Callout type="warning">
+  `inline` makes the generated code bigger at every call site, so it pays off for small
+  functions wrapping a lambda and costs you for large ones. An inline function with no
+  function-typed parameters and no `reified` type parameters draws a warning saying so:
+
+  ```text
+  warning: expected performance impact from inlining is insignificant.
+  Inlining works best for functions with parameters of function types.
+  ```
+
+  That warning is the signal you reached for `inline` out of habit.
+</Callout>
+
+Mark a parameter `noinline` to opt one lambda out, which you must do if you need to store
+it in a field or pass it on to a non-inline function. Mark it `crossinline` when the inline
+function calls it from another context (inside an object expression or a nested function) —
+that forbids non-local returns from it, which is exactly what the other context cannot
+support.
+
+## Non-local return
+
+Because the body is copied in, a bare `return` inside a lambda passed to an inline function
+can leave the *enclosing* function:
+
+```kotlin
+fun firstNegativeOrNull(ints: List<Int>): Int? {
+    ints.forEach {
+        if (it < 0) return it // non-local return, out of firstNegativeOrNull
+    }
+    return null
+}
+
+println(firstNegativeOrNull(listOf(1, 2, -3, 4)))
+println(firstNegativeOrNull(listOf(1, 2, 3)))
+```
+
+```text
+-3
+null
+```
+
+`break` and `continue` work for the same reason, including from inside a lambda that an
+inline function invokes within a loop:
+
+```kotlin
+fun sumNonNull(values: List<Int?>): Int {
+    var total = 0
+    for (value in values) {
+        val n = value ?: run {
+            println("  skipping null")
+            continue
+        }
+        total += n
+    }
+    return total
+}
+
+println(sumNonNull(listOf(1, null, 2, null, 3)))
+```
+
+```text
+  skipping null
+  skipping null
+6
+```
+
+A `continue` inside a `run { }` block — legal only because `run` is inline and the loop
+encloses it.
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  The same `return` in a lambda passed to a **non-inline** function is a compile error, not
+  a local return — `error: 'return' is prohibited here.` A lambda cannot make its caller
+  return. The fix is a label, `return@forEach`, covered under
+  [return](/functions/standard-functions/return).
 </Callout>
+
+## Reified type parameters
+
+Inlining also means the type argument is known at the call site, so an inline function can
+declare `reified T` and then use `T` as if it were a real class — `is T`, `as T`,
+`T::class` — with no `Class<T>` parameter and no reflection:
+
+```kotlin
+inline fun <reified T> countOf(items: List<Any>): Int = items.count { it is T }
+inline fun <reified T> typeNameOf(): String = T::class.simpleName ?: "?"
+
+val mixed = listOf(1, "two", 3.0, "four", 5)
+println(countOf<String>(mixed))
+println(countOf<Int>(mixed))
+println(typeNameOf<StringBuilder>())
+```
+
+```text
+2
+2
+StringBuilder
+```
+
+`reified` is only available on `inline` functions — a normal function has no call site to
+substitute the type into. A type with no runtime representation, such as `Nothing` or a
+non-reified type parameter, cannot be passed for a `reified` parameter.
+
+## Related
+
+- [Function Types](/functions/function-types) — the types these parameters have
+- [Lambda Functions](/functions/function-types/lambda-functions) — what you usually pass
+- [return](/functions/standard-functions/return) — local versus non-local return
+- [Sequences](/language-basics/sequences) — lazy chains built from higher-order operations
 
 import { Callout } from 'nextra/components'

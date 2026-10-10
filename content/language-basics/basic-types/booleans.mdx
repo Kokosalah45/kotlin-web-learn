@@ -1,19 +1,285 @@
 ---
 title: "Booleans"
-description: "Booleans in Kotlin."
+description: "true and false, the operators and infix functions, short-circuiting, precedence, and why Boolean? is not a Boolean."
 ---
 
 # Booleans
 
 <DocSource docs={["booleans"]} api={["kotlin-stdlib/kotlin/-boolean/"]} />
 
-The [`Boolean`](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/) type represents logical values: `true` and `false`.
+`Boolean` has two values and no truthiness: `0`, `""` and `null` are not usable as
+conditions. The two things worth knowing are that `&&` / `||` short-circuit while the
+`and` / `or` **infix functions** do not, and that `Boolean?` has three states, so
+`if (maybe)` does not compile.
+
+Outputs below come from running `examples/language-basics/booleans.kt`.
+
+## Declaring
+
+```kotlin
+val isTrue: Boolean = true
+val isFalse = false // Kotlin infers Boolean
+val isEnabled: Boolean? = null
+```
+
+```text
+true false Boolean
+null
+```
+
+## Producing them
+
+Comparisons and `is*` functions:
+
+```kotlin
+val number = 10
+println(number > 0)
+println("Kotlin".isEmpty())
+println("Kotlin".isNotEmpty())
+println(number in 1..100)
+println(listOf(1, 2, 3).contains(2))
+```
+
+```text
+true
+false
+true
+true
+true
+```
+
+## The operations
+
+| Operation | Written | Notes |
+| :--- | :--- | :--- |
+| NOT | `!a` | |
+| AND | `a && b` | short-circuits |
+| OR | `a \|\| b` | short-circuits |
+| AND | `a and b` | infix function, always evaluates both |
+| OR | `a or b` | infix function, always evaluates both |
+| XOR | `a xor b` | infix function, `true` when the operands differ |
+
+```kotlin
+println(!isTrue)
+println(listOf(false && false, false && true, true && false, true && true))
+println(listOf(false || false, false || true, true || false, true || true))
+println(listOf(false xor false, false xor true, true xor false, true xor true))
+```
+
+```text
+false
+[false, false, false, true]
+[false, true, true, true]
+[false, true, true, false]
+```
+
+## Short-circuiting
+
+`&&` skips its right operand when the left is `false`; `||` skips it when the left is
+`true`:
+
+```kotlin
+fun loud(name: String, value: Boolean): Boolean {
+    sideEffects++
+    println("  evaluated $name")
+    return value
+}
+
+println(loud("left", false) && loud("right", true))
+println("evaluations: $sideEffects")
+```
+
+```text
+  evaluated left
+false
+evaluations: 1
+```
+
+```kotlin
+println(loud("left", true) || loud("right", false))
+println("evaluations: $sideEffects")
+```
+
+```text
+  evaluated left
+true
+evaluations: 1
+```
+
+The infix functions do not:
+
+```kotlin
+println(loud("left", false) and loud("right", true))
+println("evaluations: $sideEffects")
+```
+
+```text
+  evaluated left
+  evaluated right
+false
+evaluations: 2
+```
+
+```kotlin
+println(loud("left", true) or loud("right", false))
+println("evaluations: $sideEffects")
+```
+
+```text
+  evaluated left
+  evaluated right
+true
+evaluations: 2
+```
+
+<Callout type="warning">
+  `and` and `or` are easy to reach for because they read well, and they change behaviour:
+  `x != null and x.isValid()` evaluates `x.isValid()` even when `x` is `null`. They also
+  bind more tightly than `&&` (see below). Use `&&` and `||` unless you specifically want
+  both sides evaluated — and if you do, assign them to variables first, which says so out
+  loud.
+</Callout>
+
+## Precedence
+
+From tightest to loosest: `!`, then infix functions (`and`, `or`, `xor`), then `&&`, then
+`||`.
+
+```kotlin
+println(true || false && false)
+println((true || false) && false)
+println(true || true && false)
+println(false && true xor true)
+println(!false && false)
+```
+
+```text
+true
+false
+true
+false
+false
+```
+
+`true || false && false` is `true || (false && false)` — `&&` binds tighter than `||`, as in
+most languages. The one to be careful with is the fourth line: `false && true xor true` is
+`false && (true xor true)`, because the infix function binds *tighter* than `&&`.
+Parenthesise anything mixing the two.
+
+## No truthiness
+
+```kotlin
+val isEven = 4 % 2 == 0
+if (isEven) println("The number is even.") else println("The number is odd.")
+println(isEven == true)
+```
+
+```text
+The number is even.
+true
+```
+
+A condition must be a `Boolean`, so `if (1)` is an error, and `0` and `1` are not `Boolean`
+values:
+
+```text
+error: condition type mismatch: inferred type is 'Int' but 'Boolean' was expected.
+error: initializer type mismatch: expected 'Boolean', actual 'Int'.
+```
+
+And since the condition is already a `Boolean`, `if (isEven == true)` is noise.
+
+## Boolean? has three states
+
+```kotlin
+val maybe: Boolean? = null
+println(maybe == true)
+println(maybe != true)
+println(maybe ?: false)
+println(maybe?.not())
+```
+
+```text
+false
+true
+false
+null
+```
+
+<Callout type="warning">
+  `if (maybe)` does not compile when `maybe` is a `Boolean?` — which is the right outcome,
+  since "unknown" is not "false":
+
+  ```text
+  error: condition type mismatch: inferred type is 'Boolean?' but 'Boolean' was expected.
+  ```
+
+  The idioms are:
+
+  - `maybe == true` — true only when it is definitely `true`
+  - `maybe != false` — true when it is `true` **or** `null`
+  - `maybe ?: false` — pick a default, then use it as a `Boolean`
+
+  Note `maybe == true` and `maybe != true` are *not* a negation pair over three states:
+  both `null` and `false` make the first `false` and the second `true`.
+</Callout>
+
+## Parsing
+
+```kotlin
+println("true".toBooleanStrict())
+println("TRUE".toBoolean())
+println("yes".toBooleanStrictOrNull())
+println(runCatching { "yes".toBooleanStrict() }.exceptionOrNull()?.let { it::class.simpleName })
+println("TRUE".toBooleanStrictOrNull())
+```
+
+```text
+true
+true
+null
+IllegalArgumentException
+null
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Three functions, three behaviours. `toBoolean()` is case-**insensitive** and returns
+  `false` for anything that is not "true", so bad input is indistinguishable from a
+  deliberate `false`. `toBooleanStrict()` accepts only the exact strings `"true"` and
+  `"false"` and throws otherwise — note `"TRUE"` fails. `toBooleanStrictOrNull()` is the
+  same but returns `null`, which is what you want for input you do not control.
 </Callout>
+
+## Comparing and sorting
+
+`Boolean` implements `Comparable`, with `false` before `true`:
+
+```kotlin
+println(false < true)
+println(listOf(true, false, true).sorted())
+println(true.compareTo(false))
+```
+
+```text
+true
+[false, true, true]
+1
+```
+
+Useful with `sortedBy { it.isActive }` — though `sortedByDescending` is usually what you
+meant.
+
+## Related
+
+- [if](/control-flow/conditional-expressions/if) / [when](/control-flow/conditional-expressions/when) — where conditions are used
+- [Filtering](/collection-operations/filtering) — `any`, `all`, `none`
+- [Basic Types](/language-basics/basic-types) — the rest of the family
+- [Nullable vs non-nullable](/null-safety/nullable-vs-non-nullable) — the `Boolean?` problem in general
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/booleans.kt" />
 
 import { Callout } from 'nextra/components'

@@ -1,19 +1,289 @@
 ---
 title: "Exceptions"
-description: "Exceptions in Kotlin."
+description: "Kotlin's unchecked-only exceptions, the Throwable hierarchy, the Nothing type, custom exception classes, and the safe alternatives to the common ones."
 ---
 
 # Exceptions
 
 <DocSource docs={["exceptions"]} />
 
-Exceptions help your code run more predictably, even when runtime errors occur that could disrupt program execution. Kotlin treats all exceptions as _unchecked_ by default. Unchecked exceptions simplify the exception handling process: you can catch exceptions, but you don't need to explicitly handle or [declare](https://kotlinlang.org/docs/java-to-kotlin-interop.html) them.
+Kotlin treats **every** exception as unchecked. Nothing in a signature declares what a
+function throws and nothing forces a caller to handle it — which removes Java's
+`throws`-clause ceremony and also removes the compiler's help in remembering that a call
+can fail. That trade is the single most important thing to know about exceptions here.
+
+Outputs below come from running `examples/control-flow/exceptions.kt`.
+
+## Everything is unchecked
+
+```kotlin
+// Nothing in the signature of this function declares that it throws.
+fun parse(text: String): Int = text.toInt()
+
+println(parse("42"))
+println(runCatching { parse("x") }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+42
+NumberFormatException
+```
+
+<Callout type="warning">
+  No `throws`, no warning, no checked-exception error. The compiler will not tell you that
+  `toInt()` can fail, so the habit that replaces it is reaching for the `*OrNull` variant —
+  `toIntOrNull()`, `firstOrNull()`, `getOrNull()` — and only using the throwing form when
+  failure really is a bug. The table at the end of this page pairs each one up.
+</Callout>
+
+To make a Kotlin function's exceptions visible to Java, Swift or Objective-C callers,
+annotate it with `@Throws`.
+
+## The hierarchy
+
+`Throwable` is the root, with two direct subclasses:
+
+| Subclass | Meaning | Handle it? |
+| :--- | :--- | :--- |
+| `Error` | a fundamental problem the program probably cannot recover from | no |
+| `Exception` | a condition you might want to handle | often |
+| `RuntimeException` (under `Exception`) | usually a missing check in your own code | prevent it instead |
+
+```kotlin
+fun kindOf(t: Throwable): String = when (t) {
+    is Error -> "Error (not meant to be handled)"
+    is RuntimeException -> "RuntimeException (a programming mistake)"
+    is Exception -> "Exception (a condition you may want to handle)"
+    else -> "Throwable"
+}
+```
+
+```text
+StackOverflowError: Error (not meant to be handled)
+OutOfMemoryError: Error (not meant to be handled)
+IllegalArgumentException: RuntimeException (a programming mistake)
+NumberFormatException: RuntimeException (a programming mistake)
+IOException: Exception (a condition you may want to handle)
+MyException: Exception (a condition you may want to handle)
+```
+
+Checking the relationships directly:
+
+```kotlin
+val throwables: List<Throwable> = listOf(
+    IllegalStateException(),
+    StackOverflowError(),
+    NumberFormatException()
+)
+for (t in throwables) {
+    println(
+        "${t::class.simpleName}: Throwable=${t is Throwable} Exception=${t is Exception} " +
+            "RuntimeException=${t is RuntimeException} Error=${t is Error}"
+    )
+}
+```
+
+```text
+IllegalStateException: Throwable=true Exception=true RuntimeException=true Error=false
+StackOverflowError: Throwable=true Exception=false RuntimeException=false Error=true
+NumberFormatException: Throwable=true Exception=true RuntimeException=true Error=false
+```
+
+<Callout type="warning">
+  `StackOverflowError` is not an `Exception`, so `catch (e: Exception)` does not catch it —
+  nor does it catch `OutOfMemoryError`. If you write a blanket handler and expect it to see
+  everything, you need `Throwable`. kotlinc is strict enough about this that writing
+  `StackOverflowError() is Exception` with a statically known type is a compile **error**,
+  not a `false`:
+
+  ```text
+  error: check for instance is always 'false'.
+  ```
+</Callout>
+
+## Custom exception classes
+
+Extend `Exception`, or any existing subclass:
+
+```kotlin
+class MyException : Exception("My message")
+class NumberTooLargeException : ArithmeticException("My message")
+```
+
+```text
+My message
+NumberTooLargeException is an ArithmeticException: true
+```
+
+Classes are final by default, so a custom exception you intend to subclass must be `open`:
+
+```kotlin
+// Declares a custom exception as an open class, making it subclassable
+open class MyCustomException(message: String) : Exception(message)
+class SpecificCustomException : MyCustomException("Specific error message")
+```
+
+```text
+Specific error message / is MyCustomException: true
+```
+
+For a family of related failures, a `sealed` base gives you exhaustive `when` handling, and
+a `cause` parameter preserves the original failure:
+
+```kotlin
+sealed class AccountException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+class InvalidAccountCredentialsException : AccountException("Invalid account credentials detected")
+
+class APIKeyExpiredException(message: String = "API key expired", cause: Throwable? = null) :
+    AccountException(message, cause)
+
+try {
+    validateAccount(credentialsValid = true, apiKeyExpired = true)
+    println("Operation successful: Account credentials and API key are valid.")
+} catch (e: AccountException) {
+    println("Error: ${e.message}")
+    e.cause?.let { println("Caused by: ${it.message}") }
+}
+```
+
+```text
+Error: API key expired
+Caused by: API key validation failed due to network error
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Never make an exception an `object`. An exception carries a stack trace captured when it
+  was constructed, so a shared singleton would report whichever call site happened to create
+  it first. Construct a new instance every time.
 </Callout>
+
+## The Nothing type
+
+`throw SomeException()` is an **expression**, and its type is `Nothing` — the type with no
+values, and a subtype of every other type. A function declared to return `Nothing` never
+returns normally:
+
+```kotlin
+fun fail(message: String): Nothing {
+    throw IllegalArgumentException(message)
+}
+
+val named = NamedPerson(name = "Kodee")
+val s: String = named.name ?: fail("Name required")
+println(s)
+```
+
+```text
+Kodee
+```
+
+`s` is a `String`, not `String?` or `Any` — the `fail(...)` branch contributes nothing to
+the type, and afterwards the compiler knows `s` is initialised. `TODO()` is the stdlib's
+`Nothing`-returning placeholder:
+
+```kotlin
+fun notImplementedFunction(): Int {
+    TODO("This function is not yet implemented")
+}
+```
+
+```text
+NotImplementedError: An operation is not implemented: This function is not yet implemented
+```
+
+Note that `TODO()` throws a `NotImplementedError` — an `Error`, not an `Exception`.
+
+## The common exceptions, and what to use instead
+
+All of these are `RuntimeException` subclasses: raised by a missing check rather than by
+circumstance.
+
+```kotlin
+println(runCatching { 2 / 0 }.exceptionOrNull()?.let { "${it::class.simpleName}: ${it.message}" })
+println(runCatching { mutableListOf(1, 2, 3).removeAt(3) }.exceptionOrNull()?.let { it::class.simpleName })
+println(listOf(1, 2, 3).getOrNull(3))
+println(runCatching { listOf<Int>().first() }.exceptionOrNull()?.let { it::class.simpleName })
+println(listOf<Int>().firstOrNull())
+println(runCatching { "This is not a number".toInt() }.exceptionOrNull()?.let { it::class.simpleName })
+println("not a number".toIntOrNull())
+val text: String? = null
+println(runCatching { text!!.length }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+ArithmeticException: / by zero
+IndexOutOfBoundsException
+null
+NoSuchElementException
+null
+NumberFormatException
+null
+NullPointerException
+```
+
+| Throws | Safe alternative |
+| :--- | :--- |
+| `list[i]`, `removeAt(i)` → `IndexOutOfBoundsException` | `getOrNull(i)`, `getOrElse(i) { }` |
+| `first()`, `last()`, `single()` → `NoSuchElementException` | `firstOrNull()`, `lastOrNull()`, `singleOrNull()` |
+| `"x".toInt()` → `NumberFormatException` | `toIntOrNull()` |
+| `x!!` → `NullPointerException` | `?.`, `?:`, `requireNotNull` |
+| `a / 0` → `ArithmeticException` | check the divisor |
+
+<Callout type="warning">
+  Integer and floating-point division disagree about zero:
+
+  ```kotlin
+  println(runCatching { 2 / 0 }.exceptionOrNull()?.let { it::class.simpleName })
+  println(2.0 / 0.0)
+  println(-2.0 / 0.0)
+  println(0.0 / 0.0)
+  ```
+
+  ```text
+  ArithmeticException
+  Infinity
+  -Infinity
+  NaN
+  ```
+
+  `Int` division by zero throws; `Double` division by zero does not — it yields `Infinity`
+  or `NaN`, which then propagates silently through everything downstream. The failure you
+  can see is the friendlier one. See [Floats](/language-basics/basic-types/floats).
+</Callout>
+
+## Stack traces
+
+An uncaught exception prints its type, thread, message and the chain of calls that led to
+it:
+
+```kotlin
+val thrown = runCatching { fail("This is an arithmetic exception!") }.exceptionOrNull()!!
+println(thrown.toString())
+println(thrown.stackTrace.first().let { "${it.className}.${it.methodName}" })
+```
+
+```text
+java.lang.IllegalArgumentException: This is an arithmetic exception!
+examples.controlflow.ExceptionsKt.fail
+```
+
+The first line is the description — type, then message. Each `at ...` line after it is a
+stack frame: the method, and the file and line it was called from. The topmost frame is
+where the exception was *constructed*, which is why constructing exceptions eagerly (or
+sharing one) destroys the information you need.
+
+## Related
+
+- [Throwing Exceptions](/control-flow/exceptions/throwing-exceptions) — `throw`, `require`, `check`, `error`
+- [Catching Exceptions](/control-flow/exceptions/catching-exceptions) — `try`, `catch`, `finally`, `use`
+- [Nullability Check Operators](/null-safety/nullability-check-operators) — `!!` and the alternatives
+- [Java Nullability](/null-safety/java-nullability) — where `NullPointerException` still comes from
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="control-flow/exceptions.kt" />
 
 import { Callout } from 'nextra/components'

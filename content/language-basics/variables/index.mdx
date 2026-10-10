@@ -1,19 +1,253 @@
 ---
 title: "Variables"
-description: "Variables in Kotlin."
+description: "Declaring with val and var, inferred types, late initialization, top-level properties, destructuring, lateinit and const."
 ---
 
 # Variables
 
 <DocSource docs={["basic-syntax"]} />
 
-This is a collection of basic syntax elements with examples. At the end of every section, you'll find a link to a detailed description of the related topic.
+Every variable starts with `val` or `var` — there is no bare `x = 5` and no way to declare
+one without saying whether it can be reassigned. The type is usually inferred; it becomes
+mandatory the moment you declare a variable without initialising it.
+
+Outputs below come from running `examples/language-basics/variables.kt`.
+
+## val and var
+
+```kotlin
+val fixed: Int = 5
+println(fixed)
+
+var changing: Int = 5
+changing += 1
+println(changing)
+```
+
+```text
+5
+6
+```
+
+`val` is assigned once; `var` can be reassigned. Which to choose, and what `val` does *not*
+promise, is covered in [val vs var](/language-basics/variables/val-vs-var).
+
+## The type can be left out
+
+```kotlin
+val inferred = 5
+println("$inferred is an ${inferred::class.simpleName}")
+val text = "Kotlin"
+println("$text is a ${text::class.simpleName}")
+```
+
+```text
+5 is an Int
+Kotlin is a String
+```
+
+See [Type Inference](/language-basics/data-types/type-inference) for where inference helps
+and where it surprises.
+
+## Declare now, initialise later
+
+A variable must be initialised before it is used — but the initialisation need not be on the
+declaration line. Without an initialiser there is nothing to infer from, so the **type is
+required**:
+
+```kotlin
+val immediate = 5
+// No initializer, so the type is required.
+val later: Int
+later = 3
+println(immediate)
+println(later)
+```
+
+```text
+5
+3
+```
 
 <Callout type="info">
-  Summary quoted from the official documentation linked above, which remains the
-  authoritative source. This page has not been expanded with worked examples yet —
-  unlike the [Collection Operations](/collection-operations) section, nothing here has
-  been verified by running it.
+  Note this works for a `val` too: the restriction is "assigned exactly once", not "assigned
+  on the declaration line". The compiler's flow analysis checks every path assigns it exactly
+  once before use, so a `val` set in both branches of an `if` is fine — and a `val` set in
+  only one branch is a compile error rather than a surprise `null`.
 </Callout>
+
+```kotlin
+val label: String
+if (fixed > 3) {
+    label = "big"
+} else {
+    label = "small"
+}
+println(label)
+
+// But an expression reads better:
+val betterLabel = if (fixed > 3) "big" else "small"
+println(betterLabel)
+```
+
+```text
+big
+big
+```
+
+## Top-level properties
+
+A variable can live at the top level of a file, outside any class — the Kotlin equivalent of
+a global, scoped to its package:
+
+```kotlin
+val PI = 3.14
+var counter = 0
+
+fun incrementCounter() {
+    counter += 1
+}
+```
+
+```text
+counter = 0; PI = 3.14
+incrementCounter()
+counter = 1; PI = 3.14
+```
+
+These are **properties**, not plain fields: they get a generated getter (and a setter for
+`var`), which is why they can have custom accessors. See
+[Properties](/classes-and-objects/class-members/properties).
+
+## Shadowing
+
+An inner scope may reuse a name, and the inner declaration wins for the rest of that scope:
+
+```kotlin
+val name = "outer"
+run {
+    val name = "inner"
+    println(name)
+}
+println(name)
+```
+
+```text
+inner
+outer
+```
+
+kotlinc 2.4.21 compiles this without a warning, so nothing but a code review will tell you
+the inner `name` is not the outer one. IntelliJ flags it; the compiler does not.
+
+## Destructuring declarations
+
+A single declaration can unpack a value that provides `component1()`, `component2()` and so
+on — which every [data class](/classes-and-objects/more-on-classes-and-objects/data-classes),
+`Pair` and `Map.Entry` does:
+
+```kotlin
+val (first, second) = 1 to "one"
+println("$first / $second")
+
+data class DivisionResult(val quotient: Int, val remainder: Int)
+fun divideWithRemainder(a: Int, b: Int) = DivisionResult(a / b, a % b)
+
+val (q, r) = divideWithRemainder(17, 5)
+println("$q remainder $r")
+
+val (_, onlySecond) = 1 to "one"
+println(onlySecond)
+```
+
+```text
+1 / one
+3 remainder 2
+one
+```
+
+`_` skips a component you do not need. Destructuring is **positional**, so renaming a data
+class property silently changes nothing while reordering two of them silently swaps your
+variables.
+
+## lateinit
+
+Sometimes a non-null property genuinely cannot be set at construction — injected
+dependencies, a test fixture. `lateinit var` turns that into a runtime check instead of a
+nullable type:
+
+```kotlin
+class WeatherStation {
+    lateinit var latestReading: String
+
+    fun printReading() {
+        if (this::latestReading.isInitialized) {
+            println("Latest reading: $latestReading")
+        } else {
+            println("No reading available")
+        }
+    }
+}
+```
+
+```text
+No reading available
+Latest reading: 22C, sunny
+```
+
+Reading it before it is set throws a dedicated exception that names the property:
+
+```text
+UninitializedPropertyAccessException: lateinit property report has not been initialized
+```
+
+<Callout type="warning">
+  `lateinit` trades a compile-time guarantee for a runtime one. It only works on a `var`,
+  only on a non-nullable type, and not on a primitive type:
+
+  ```text
+  error: 'lateinit' modifier is not allowed on properties of primitive types.
+  ```
+
+  It also cannot be declared in a primary constructor or have custom accessors.
+  Prefer a nullable `var` with `?.`, or restructure so the value is available at
+  construction; reach for `lateinit` when a framework forces your hand.
+</Callout>
+
+## const
+
+A `val` whose value is known at compile time can be `const`, which inlines it at every use
+site and drops the getter:
+
+```kotlin
+const val MAX_LOGIN_ATTEMPTS = 3
+
+object Limits {
+    const val TIMEOUT_MS = 5_000
+}
+```
+
+```text
+3
+5000
+```
+
+`const` requires a top-level property, or a member of an `object` or companion object; a
+`String` or [primitive](/language-basics/basic-types) value; and no custom getter. Because
+the value is inlined into callers, changing a `const` in a library means recompiling
+everything that used it.
+
+## Related
+
+- [val vs var](/language-basics/variables/val-vs-var) — and what `val` does not guarantee
+- [Type Inference](/language-basics/data-types/type-inference) — leaving the type out
+- [Properties](/classes-and-objects/class-members/properties) — accessors and backing fields
+- [Basic Types](/language-basics/basic-types) — what you can put in one
+
+## Run it
+
+The whole file those outputs came from, runnable and editable:
+
+<Runnable src="language-basics/variables.kt" />
 
 import { Callout } from 'nextra/components'
