@@ -13,6 +13,7 @@ const meta: MetaRecord = {
   'packages-and-ecosystem': {"title":"Packages & Ecosystem"},
   'kotlin-platforms': {"title":"Kotlin Platforms"},
   'kotlin-applications': {"title":"Kotlin Applications"},
+  playground: { title: 'Playground' },
   attribution: { title: 'Attribution' },
 }
 

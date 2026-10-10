@@ -94,6 +94,9 @@ for (const section of sections) {
 const topEntries = [
   "index: { title: 'Kotlin Learn', theme: { breadcrumb: false } },",
   ...sections.map((s) => `${key(s.slug)}: ${JSON.stringify({ title: s.title })},`),
+  // Hand-written pages that are not roadmap nodes. Listed here so this
+  // generator does not drop them from content/_meta.ts.
+  "playground: { title: 'Playground' },",
   "attribution: { title: 'Attribution' },"
 ]
 if (!listOnly) await writeFile(`${ROOT}/_meta.ts`, metaFile(topEntries))

@@ -1,0 +1,88 @@
+---
+title: Playground
+description: Run and edit Kotlin in the browser, and save a snippet to a share link.
+---
+
+# Playground
+
+Edit the code and press **Run**. Nothing is installed and nothing runs on your machine —
+the code is sent to a compiler and the output comes back.
+
+<Runnable
+  label="Scratch"
+  code={`fun main() {
+    val greeting = "Hello, Kotlin"
+    println(greeting)
+    println(greeting.uppercase())
+
+    val squaresOfOdds = (1..10)
+        .filter { it % 2 == 1 }
+        .map { it * it }
+
+    println(squaresOfOdds)
+    println(squaresOfOdds.sum())
+}`}
+/>
+
+## Where the code runs
+
+The editor is [`kotlin-playground`](https://github.com/JetBrains/kotlin-playground)
+(Apache 2.0), the component JetBrains embeds in `kotlinlang.org`. It posts to
+`api.kotlinlang.org`, the public instance of
+[`JetBrains/kotlin-compiler-server`](https://github.com/JetBrains/kotlin-compiler-server),
+which is also the backend behind
+[play.kotlinlang.org](https://play.kotlinlang.org). There is no compiler on this site.
+
+<Callout type="warning">
+  Code you run leaves your browser and is compiled and executed on a server JetBrains
+  operates, under their terms rather than this site's. Treat anything you paste in as
+  public.
+</Callout>
+
+The editor asks the server which compilers it offers and requests **Kotlin 2.4.21** — the
+version [every recorded output on this site was produced
+with](/#how-these-pages-are-built), so the editor and the `text` blocks beside it run the
+same compiler. If the server stops offering it, the component falls back to whatever it
+reports as `latestStable`, and a saved snippet records the version that actually ran rather
+than the one that was asked for.
+
+### What this is not
+
+- **Not a sandbox this site controls.** Timeouts, resource limits and the security policy
+  belong to the public server.
+- **Not the whole language surface.** Each run compiles a single file against the standard
+  library. No Gradle, no third-party dependencies, no multi-file projects.
+- **Not offline.** If `api.kotlinlang.org` is unreachable the editor says so and does not
+  appear, because it cannot even retrieve the version list.
+- **Not instant.** Measured end-to-end against the server on 2026-10-10, a small snippet
+  took **1.4–1.8 s** per run, compilation included.
+
+## Saving and sharing
+
+**Save & share** stores exactly what is in the editor and returns a link such as
+`/p/8kq3mz0r4t`. Opening it loads the code into a fresh editor, set to the Kotlin version
+the snippet was saved against.
+
+Snippets are write-once: editing a saved snippet and saving again produces a new link
+instead of changing the old one, so a link you have already shared keeps showing what you
+shared. There is no listing and no index — a snippet is reachable only by its id, which is
+50 bits of randomness.
+
+Saving needs a Redis store to be connected. Without one the button reports that no store is
+configured, and running code still works.
+
+## Making a page's example runnable
+
+Concept pages show excerpts with their recorded output. Where a page has a backing file
+under `examples/`, `<Runnable>` opens that whole file in an editor — the same text that
+`pnpm examples:run` compiled and recorded:
+
+```mdx
+<Runnable src="collection-operations/grouping.kt" />
+```
+
+Prefer `src` over `code`. A `src` file is real Kotlin that the example runner compiles,
+whereas `code` is a JSX expression, so Kotlin string templates in it would be read as
+JavaScript interpolation and have to be escaped.
+
+import { Callout } from 'nextra/components'
