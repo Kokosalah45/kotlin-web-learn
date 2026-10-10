@@ -11,7 +11,8 @@
     "content:fetch": "node scripts/fetch-docs.mjs",
     "content:verify": "node scripts/verify-links.mjs",
     "examples:run": "node scripts/run-examples.mjs",
-    "content:scaffold": "node scripts/scaffold.mjs"
+    "content:scaffold": "node scripts/scaffold.mjs",
+    "content:fill": "node scripts/fill-placeholders.mjs"
   },
   "dependencies": {
     "next": "16.3.5",

@@ -1,10 +1,136 @@
 ---
 title: "Ranges"
-description: "Ranges in Kotlin."
+description: "Closed-ended (..) and open-ended (..<) ranges, downTo, step, and membership testing with in."
 ---
 
 # Ranges
 
 <DocSource docs={["ranges"]} api={["kotlin-stdlib/kotlin.ranges/"]} />
 
-{/* placeholder */}
+A range is an ordered set of values with a defined start and end, built from the
+`kotlin.ranges` package. By default it increments by 1.
+
+Outputs below come from running `examples/language-basics/ranges.kt`.
+
+## Closed-ended and open-ended
+
+| Operator | Function | Includes the end |
+| :--- | :--- | :--- |
+| `1..4` | `rangeTo()` | yes — 1, 2, 3, 4 |
+| `1..<4` | `rangeUntil()` | no — 1, 2, 3 |
+
+```kotlin
+println(4 in 1..4)
+println(4 in 1..<4)
+```
+
+```text
+true
+false
+```
+
+Both are plain functions underneath:
+
+```kotlin
+println(1.rangeTo(4).toList())
+println(1.rangeUntil(4).toList())
+```
+
+```text
+[1, 2, 3, 4]
+[1, 2, 3]
+```
+
+## Iterating
+
+```kotlin
+for (i in 1..4) print(i)
+for (i in 4 downTo 1) print(i)
+```
+
+```text
+1234
+4321
+```
+
+`downTo` counts backwards — note you do **not** write a negative step for it:
+
+```kotlin
+println((5 downTo 1).toList())
+println((5 downTo 1 step 2).toList())
+```
+
+```text
+[5, 4, 3, 2, 1]
+[5, 3, 1]
+```
+
+`step` sets a custom increment, and combines with both range operators and `downTo`:
+
+```kotlin
+for (i in 0..8 step 2) print(i)
+for (i in 0..<8 step 2) print(i)
+for (i in 8 downTo 0 step 2) print(i)
+```
+
+```text
+02468
+0246
+86420
+```
+
+## Empty ranges
+
+A range whose start is past its end is simply empty — not an error, and not reversed:
+
+```kotlin
+val empty = 5..1
+println(empty.toList())
+println(empty.isEmpty())
+```
+
+```text
+[]
+true
+```
+
+<Callout type="warning">
+  `5..1` iterates zero times. If you meant to count down you need `5 downTo 1`. A loop
+  that silently does nothing is easy to miss.
+</Callout>
+
+## Beyond Int
+
+Ranges work for other integral types, including `Char` and `Long`:
+
+```kotlin
+println(('a'..'e').toList())
+println((1L..5L).sum())
+```
+
+```text
+[a, b, c, d, e]
+15
+```
+
+Floating-point ranges support membership testing but cannot be iterated — there is no
+sensible "next" value:
+
+```kotlin
+val doubles = 1.0..2.0
+println(1.5 in doubles)
+println(doubles::class.simpleName)
+```
+
+```text
+true
+ClosedDoubleRange
+```
+
+## Related
+
+- [Progressions](/language-basics/progressions) — what an iterated range actually is
+- [Loops](/control-flow/loops) — the `for` loop that consumes them
+- [Retrieving Collection Parts](/collection-operations/retrieving-collection-parts) — `slice()` takes a range
+
+import { Callout } from 'nextra/components'

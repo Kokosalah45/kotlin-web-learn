@@ -1,10 +1,214 @@
 ---
 title: "Collections"
-description: "Collections in Kotlin."
+description: "The kotlin.collections hierarchy — Collection, List, Set, Map and ArrayDeque — their default implementations and equality rules."
 ---
 
 # Collections
 
-<DocSource docs={["collections-overview","constructing-collections"]} />
+<DocSource docs={["collections-overview", "constructing-collections"]} api={["kotlin-stdlib/kotlin.collections/"]} />
 
-{/* placeholder */}
+A collection is a group of a variable number of items, held in the `kotlin.collections`
+package. Three types matter:
+
+| Type | Ordered | Duplicates | Addressed by |
+| :--- | :--- | :--- | :--- |
+| `List` | yes | yes | index |
+| `Set` | generally no | no | membership |
+| `Map` | generally no | duplicate **values** allowed, keys unique | key |
+
+<Callout type="info">
+  Arrays are **not** collections — see [Arrays](/language-basics/basic-types/arrays).
+</Callout>
+
+Outputs below come from running `examples/language-basics/collections.kt`.
+
+## The hierarchy
+
+`Collection<T>` is the root, and it inherits from `Iterable<T>`. `List` and `Set` extend
+it. `Map` does **not** — it is a collection type in Kotlin but not a `Collection`.
+
+```text
+Iterable<T>
+   └── Collection<T>          MutableCollection<T>
+         ├── List<T>            └── MutableList<T>
+         └── Set<T>             └── MutableSet<T>
+
+Map<K, V>  ──  MutableMap<K, V>      (separate hierarchy)
+```
+
+Taking `Collection<T>` as a parameter accepts both lists and sets:
+
+```kotlin
+fun printAll(strings: Collection<String>) {
+    for (s in strings) print("$s ")
+    println()
+}
+
+printAll(listOf("one", "two", "one"))
+printAll(setOf("one", "two", "three"))
+```
+
+```text
+one two one 
+one two three 
+```
+
+`MutableCollection<T>` adds the write operations, which makes it the right type for a
+destination parameter:
+
+```kotlin
+fun List<String>.getShortWordsTo(shortWords: MutableList<String>, maxLength: Int) {
+    this.filterTo(shortWords) { it.length <= maxLength }
+    val articles = setOf("a", "A", "an", "An", "the", "The")
+    shortWords -= articles
+}
+
+val words = "A long time ago in a galaxy far far away".split(" ")
+val shortWords = mutableListOf<String>()
+words.getShortWordsTo(shortWords, 3)
+println(shortWords)
+```
+
+```text
+[ago, in, far, far]
+```
+
+## Default implementations
+
+Each factory function gives you a specific class, and knowing which one explains the
+iteration order you see:
+
+```kotlin
+println(mutableListOf(1)::class.java.simpleName)
+println(mutableSetOf(1)::class.java.simpleName)
+println(mutableMapOf(1 to 1)::class.java.simpleName)
+```
+
+```text
+ArrayList
+LinkedHashSet
+LinkedHashMap
+```
+
+Both `Linked*` defaults preserve insertion order. The alternatives — `HashSet` and
+`HashMap` — promise nothing about order but use less memory.
+
+## Equality
+
+Lists compare **positionally**; sets and maps do not:
+
+```kotlin
+println(setOf(1, 2, 3, 4) == setOf(4, 3, 2, 1))
+
+val numbersMap = mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key4" to 1)
+val anotherMap = mapOf("key2" to 2, "key1" to 1, "key4" to 1, "key3" to 3)
+println("The maps are equal: ${numbersMap == anotherMap}")
+```
+
+```text
+true
+The maps are equal: true
+```
+
+But a `LinkedHashSet` still *iterates* in insertion order, so two equal sets can disagree
+on what `first()` is:
+
+```kotlin
+val setNumbers = setOf(1, 2, 3, 4)
+val numbersBackwards = setOf(4, 3, 2, 1)
+println(setNumbers.first() == numbersBackwards.first())
+println(setNumbers.first() == numbersBackwards.last())
+```
+
+```text
+false
+true
+```
+
+<Callout type="warning">
+  Equal sets, different iteration order. `==` on sets ignores order; `first()`, `last()`
+  and `elementAt()` do not. Do not use positional functions on a set to get a stable
+  answer.
+</Callout>
+
+Because list equality is structural and elements are compared by `equals()`, a mutable
+element can change the answer after the fact:
+
+```kotlin
+data class Person(var name: String, var age: Int)
+
+val bob = Person("Bob", 31)
+val people = listOf(Person("Adam", 20), bob, bob)
+val people2 = listOf(Person("Adam", 20), Person("Bob", 31), bob)
+println(people == people2)
+bob.age = 32
+println(people == people2)
+```
+
+```text
+true
+false
+```
+
+Nothing was added or removed — one element's property changed. See
+[Equality & Hashing](/collection-operations/equality-and-hashing).
+
+## Covariance
+
+Read-only collection types are [covariant](/classes-and-objects/more-on-classes-and-objects/class-generics):
+if `Rectangle` inherits from `Shape`, a `List<Rectangle>` is usable wherever a
+`List<Shape>` is wanted.
+
+```kotlin
+val rectangles: List<Rectangle> = listOf(Rectangle(), Rectangle())
+val shapes: List<Shape> = rectangles
+println(shapes.size)
+```
+
+```text
+2
+```
+
+Mutable collections are **not** covariant, and must not be: if `MutableList<Rectangle>`
+were a `MutableList<Shape>`, you could insert a `Circle` into it and break the element
+type at runtime. Maps are covariant on the value type but not the key type.
+
+## ArrayDeque
+
+`ArrayDeque<T>` is a double-ended queue backed by a resizable array — it serves as both
+stack and queue:
+
+```kotlin
+val deque = ArrayDeque(listOf(1, 2, 3))
+deque.addFirst(0)
+deque.addLast(4)
+println(deque)
+println(deque.first())
+println(deque.last())
+deque.removeFirst()
+deque.removeLast()
+println(deque)
+```
+
+```text
+[0, 1, 2, 3, 4]
+0
+4
+[1, 2, 3]
+```
+
+## In this section
+
+- [Lists](/language-basics/collections/lists) — ordered, indexed, duplicates allowed
+- [Sets](/language-basics/collections/sets) — unique elements
+- [Maps](/language-basics/collections/maps) — key-value entries
+- [read-only vs mutable](/language-basics/collections/read-only-vs-mutable) — the interface split
+- [Iterators](/language-basics/collections/iterators) — traversing element by element
+
+## Related
+
+- [Collection Operations](/collection-operations) — everything you can do with them
+- [Sequences](/language-basics/sequences) — the lazy alternative
+- [Arrays](/language-basics/basic-types/arrays) — fixed size, and not a collection
+
+import { Callout } from 'nextra/components'

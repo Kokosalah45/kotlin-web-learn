@@ -39,6 +39,12 @@ pnpm content:scaffold          # add any missing pages, rewrite the _meta files
 node scripts/scaffold.mjs --list   # report which pages are still placeholders
 ```
 
+Pages that have not been expanded by hand are not left blank. `pnpm content:fill` replaces
+the placeholder marker with the opening prose of the corresponding `kotlinlang.org` page,
+quoted from the cached Markdown rather than paraphrased, and adds a callout saying the page
+has not been expanded or verified yet. 15 nodes have no cached Markdown and get the links
+alone.
+
 ### 2. Every documentation link is checked
 
 ```bash
@@ -58,7 +64,16 @@ so pages are written against the real text. 17 slugs have no Markdown there — 
 serialization, Dokka and Kotlin Multiplatform live in other repositories — and those pages
 link out rather than summarize.
 
-### 3. Every output shown was actually executed
+### 3. Expanded pages state what is and is not verified
+
+Pages written out in full carry worked examples with executed output. Pages still showing
+the quoted-summary callout have not been expanded, and say so on the page itself — there is
+no page that looks finished but is not.
+
+Currently expanded: all of **Collection Operations** (18 pages), plus **Collections**,
+**Sequences**, **Ranges** and **Progressions** under Language Basics.
+
+### 4. Every output shown was actually executed
 
 Code samples live as runnable files under `examples/`, one per page. They are compiled and
 run, and their real stdout is recorded in `examples/.outputs.json`. Nothing printed on a

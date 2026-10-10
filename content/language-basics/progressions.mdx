@@ -1,10 +1,87 @@
 ---
 title: "Progressions"
-description: "Progressions in Kotlin."
+description: "IntProgression, LongProgression and CharProgression — first, last and step, and why last is not always the end value you wrote."
 ---
 
 # Progressions
 
 <DocSource docs={["ranges"]} api={["kotlin-stdlib/kotlin.ranges/-int-progression/"]} />
 
-{/* placeholder */}
+Ranges of integral types can be treated as
+[arithmetic progressions](https://en.wikipedia.org/wiki/Arithmetic_progression). Kotlin
+gives them their own types: `IntProgression`, `LongProgression` and `CharProgression`.
+
+A progression has exactly three properties:
+
+| Property | Meaning |
+| :--- | :--- |
+| `first` | the starting element |
+| `last` | the final element actually reached |
+| `step` | the increment, never zero |
+
+Iterating a progression with a positive step is equivalent to this Java loop:
+
+```java
+for (int i = first; i <= last; i += step) {
+  // ...
+}
+```
+
+Outputs below come from running `examples/language-basics/ranges.kt`.
+
+Iterating a [range](/language-basics/ranges) creates a progression implicitly, with the
+range's endpoints as `first` and `last` and a `step` of 1.
+
+## last is computed, not copied
+
+This is the part worth internalising. `last` is derived from `first`, `step` and the end
+value — it is **not** necessarily the end value you wrote:
+
+- positive step: the largest value not greater than the end where `(last - first) % step == 0`
+- negative step: the smallest value not less than the end where `(last - first) % step == 0`
+
+```kotlin
+for (i in 1..9 step 3) print(i)
+
+val progression = 1..9 step 3
+println("first=${progression.first} last=${progression.last} step=${progression.step}")
+```
+
+```text
+147
+first=1 last=7 step=3
+```
+
+<Callout type="warning">
+  Written as `1..9`, but `last` is `7`. From 1 in steps of 3 you reach 1, 4, 7 — and 10
+  would overshoot, so 9 is never an element. Reading `.last` to find "the end of my range"
+  gives you 7, not 9.
+</Callout>
+
+## Progressions are Iterable
+
+They implement `Iterable<N>`, so the whole
+[collection operations](/collection-operations) library applies:
+
+```kotlin
+println((1..10).filter { it % 2 == 0 })
+println((1..10).map { it * it }.take(4))
+```
+
+```text
+[2, 4, 6, 8, 10]
+[1, 4, 9, 16]
+```
+
+<Callout type="info">
+  These are eager — `(1..10).filter { }` builds a list. For a large range, add
+  [`asSequence()`](/language-basics/sequences) so the pipeline stays lazy.
+</Callout>
+
+## Related
+
+- [Ranges](/language-basics/ranges) — the `..`, `..<`, `downTo` and `step` syntax
+- [Sequences](/language-basics/sequences) — laziness over a long progression
+- [Loops](/control-flow/loops) — iterating them
+
+import { Callout } from 'nextra/components'

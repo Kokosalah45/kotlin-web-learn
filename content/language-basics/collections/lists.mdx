@@ -1,10 +1,82 @@
 ---
 title: "Lists"
-description: "Lists in Kotlin."
+description: "List<T> — ordered, indexed, duplicates allowed, backed by ArrayList, with positional equality."
 ---
 
 # Lists
 
-<DocSource docs={["list-operations"]} api={["kotlin-stdlib/kotlin.collections/-list/"]} />
+<DocSource docs={["list-operations", "collections-overview"]} api={["kotlin-stdlib/kotlin.collections/-list/"]} />
 
-{/* placeholder */}
+`List<T>` stores elements in a specified order and gives indexed access to them. Indices
+start at `0` and run to `lastIndex`, which is `size - 1`.
+
+Outputs below come from running `examples/language-basics/collections.kt`.
+
+```kotlin
+val listNumbers = listOf("one", "two", "three", "four")
+println("Number of elements: ${listNumbers.size}")
+println("Third element: ${listNumbers.get(2)}")
+println("Fourth element: ${listNumbers[3]}")
+println("Index of element \"two\" ${listNumbers.indexOf("two")}")
+println("lastIndex: ${listNumbers.lastIndex}")
+```
+
+```text
+Number of elements: 4
+Third element: three
+Fourth element: four
+Index of element "two" 1
+lastIndex: 3
+```
+
+## Duplicates and equality
+
+A list can hold any number of equal objects, including repeats of the same instance and
+multiple `null`s. Two lists are equal when they have the same size and structurally equal
+elements **at the same positions** — so order is part of identity.
+
+```kotlin
+data class Person(var name: String, var age: Int)
+
+val bob = Person("Bob", 31)
+val people = listOf(Person("Adam", 20), bob, bob)
+val people2 = listOf(Person("Adam", 20), Person("Bob", 31), bob)
+println(people == people2)
+bob.age = 32
+println(people == people2)
+```
+
+```text
+true
+false
+```
+
+The second comparison fails because `bob` appears in both lists and its `age` changed —
+the lists were never copies of each other.
+
+## MutableList
+
+`MutableList<T>` adds position-aware write operations: insert at an index, replace at an
+index, remove at an index.
+
+```kotlin
+val numbers = mutableListOf(1, 2, 3, 4)
+numbers.add(5)
+numbers.removeAt(1)
+numbers[0] = 0
+```
+
+The default implementation is `ArrayList` — think of it as a resizable array.
+
+<Callout type="info">
+  This is the key difference from an [array](/language-basics/basic-types/arrays): an
+  array's size is fixed at creation and never changes, while a list grows and shrinks.
+</Callout>
+
+## Related
+
+- [List-specific operations](/collection-operations/collection-specific-operations/list-operations) — `subList`, `binarySearch`, in-place sort
+- [read-only vs mutable](/language-basics/collections/read-only-vs-mutable)
+- [Sets](/language-basics/collections/sets) — when duplicates should not exist
+
+import { Callout } from 'nextra/components'

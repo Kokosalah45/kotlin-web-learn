@@ -1,10 +1,168 @@
 ---
 title: "Iterators"
-description: "Iterators in Kotlin."
+description: "Iterator, ListIterator and MutableIterator — explicit traversal, and what happens when you modify a collection while looping."
 ---
 
 # Iterators
 
 <DocSource docs={["iterators"]} api={["kotlin-stdlib/kotlin.collections/-iterator/"]} />
 
-{/* placeholder */}
+An iterator gives sequential access to elements without exposing the collection's
+structure. Any `Iterable<T>` — which includes `List` and `Set` — can produce one with
+`iterator()`.
+
+Outputs below come from running `examples/language-basics/iterators.kt`.
+
+## The explicit form
+
+A fresh iterator points at the first element. `next()` returns the current element and
+advances.
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four")
+val numbersIterator = numbers.iterator()
+while (numbersIterator.hasNext()) {
+    println(numbersIterator.next())
+}
+```
+
+```text
+one
+two
+three
+four
+```
+
+Once past the last element an iterator is spent — it cannot be reset or reused:
+
+```kotlin
+println(numbersIterator.hasNext())
+println(runCatching { numbersIterator.next() }.exceptionOrNull()?.let { it::class.simpleName })
+```
+
+```text
+false
+NoSuchElementException
+```
+
+To go round again, get a new iterator.
+
+## The forms you will actually write
+
+A `for` loop obtains an iterator implicitly, and `forEach()` wraps the whole thing. All
+three of these print the same four lines:
+
+```kotlin
+for (item in numbers) println(item)
+
+numbers.forEach { println(it) }
+```
+
+## ListIterator
+
+Lists offer `ListIterator`, which also walks backwards via `hasPrevious()` and
+`previous()`, and reports positions with `nextIndex()` and `previousIndex()`:
+
+```kotlin
+val listIterator = numbers.listIterator()
+while (listIterator.hasNext()) listIterator.next()
+println("Iterating backwards:")
+while (listIterator.hasPrevious()) {
+    print("Index: ${listIterator.previousIndex()}")
+    println(", value: ${listIterator.previous()}")
+}
+```
+
+```text
+Iterating backwards:
+Index: 3, value: four
+Index: 2, value: three
+Index: 1, value: two
+Index: 0, value: one
+```
+
+Because it moves both ways, a `ListIterator` is still usable after reaching the end —
+unlike a plain `Iterator`.
+
+## MutableIterator
+
+`MutableIterator` adds `remove()`, which is the supported way to delete while traversing:
+
+```kotlin
+val mutable = mutableListOf("one", "two", "three", "four")
+val mutableIterator = mutable.iterator()
+mutableIterator.next()
+mutableIterator.remove()
+println("After removal: $mutable")
+```
+
+```text
+After removal: [two, three, four]
+```
+
+`MutableListIterator` additionally has `add()` and `set()`:
+
+```kotlin
+val editing = mutableListOf("one", "four", "four")
+val mutableListIterator = editing.listIterator()
+mutableListIterator.next()
+mutableListIterator.add("two")
+println(editing)
+mutableListIterator.next()
+mutableListIterator.set("three")
+println(editing)
+```
+
+```text
+[one, two, four, four]
+[one, two, three, four]
+```
+
+## Modifying a collection during a for loop
+
+Going around the iterator and mutating the collection directly has **two** failure modes,
+and the quiet one is worse.
+
+It can throw:
+
+```kotlin
+val throwing = mutableListOf(1, 2, 3, 4)
+val visitedThrowing = mutableListOf<Int>()
+for (n in throwing) { visitedThrowing += n; if (n == 1) throwing.remove(n) }
+```
+
+```text
+ConcurrentModificationException
+visited: [1], list: [2, 3, 4]
+```
+
+Or it can silently stop early:
+
+```kotlin
+val silent = mutableListOf(1, 2, 3)
+val visitedSilent = mutableListOf<Int>()
+for (n in silent) { visitedSilent += n; if (n == 2) silent.remove(n) }
+```
+
+```text
+null
+visited: [1, 2], list: [1, 3]
+```
+
+<Callout type="warning">
+  No exception in the second case — the loop just ended. Removing the second-to-last
+  element leaves the cursor at the new size, so `hasNext()` returns `false` before the
+  modification check ever runs, and `3` is never visited. Do not rely on getting an
+  exception to catch this bug.
+
+  Use `iterator.remove()`, or `removeAll { }`, or build a new collection with
+  [`filter`](/collection-operations/filtering).
+</Callout>
+
+## Related
+
+- [Loops](/control-flow/loops) — the `for` loop that uses these
+- [Sequences](/language-basics/sequences) — lazy iteration over a pipeline
+- [Write Operations](/collection-operations/write-operations) — `removeAll { }` and friends
+
+import { Callout } from 'nextra/components'

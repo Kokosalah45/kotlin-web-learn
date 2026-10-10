@@ -1,10 +1,213 @@
 ---
 title: "Sequences"
-description: "Sequences in Kotlin."
+description: "Sequence<T> — lazy, element-at-a-time processing, how it differs from Iterable, and when the overhead is not worth it."
 ---
 
 # Sequences
 
 <DocSource docs={["sequences"]} api={["kotlin-stdlib/kotlin.sequences/-sequence/"]} />
 
-{/* placeholder */}
+A `Sequence<T>` offers the same functions as `Iterable`, but it does not **contain**
+elements — it produces them while iterating.
+
+The difference is the order the work happens in:
+
+- **`Iterable`** completes each step for the *whole collection*, then moves to the next
+  step, allocating an intermediate collection each time.
+- **`Sequence`** runs *all* the steps for *one element*, then moves to the next element,
+  and only when the result is actually requested.
+
+Outputs below come from running `examples/language-basics/sequences.kt`.
+
+## Constructing
+
+From elements, or from an existing `Iterable`:
+
+```kotlin
+val numbersSequence = sequenceOf("four", "three", "two", "one")
+val fromList = listOf("one", "two", "three", "four").asSequence()
+```
+
+From a function. `generateSequence()` keeps calling the lambda on the previous element, and
+stops when it returns `null` — so without a `null` it is infinite:
+
+```kotlin
+val oddNumbers = generateSequence(1) { it + 2 }
+println(oddNumbers.take(5).toList())
+// oddNumbers.count()  // would never terminate
+```
+
+```text
+[1, 3, 5, 7, 9]
+```
+
+```kotlin
+val oddNumbersLessThan10 = generateSequence(1) { if (it < 8) it + 2 else null }
+println(oddNumbersLessThan10.count())
+```
+
+```text
+5
+```
+
+The `sequence { }` builder yields elements one at a time or in chunks. `yield()` takes one
+element, `yieldAll()` takes an `Iterable`, `Iterator` or another `Sequence`:
+
+```kotlin
+val built = sequence {
+    yield(1)
+    yieldAll(listOf(3, 5))
+    yieldAll(generateSequence(7) { it + 2 })
+}
+println(built.take(5).toList())
+```
+
+```text
+[1, 3, 5, 7, 9]
+```
+
+<Callout type="info">
+  A `yieldAll()` given an infinite sequence must be the **last** call in the builder —
+  anything after it is unreachable.
+</Callout>
+
+## Intermediate and terminal operations
+
+- An operation returning another `Sequence` is **intermediate** and does nothing on its
+  own.
+- An operation returning anything else is **terminal** and drives the whole pipeline.
+  `toList()`, `sum()`, `first()`, `count()` are terminal.
+
+Elements can only be retrieved by a terminal operation:
+
+```kotlin
+val neverRun = words.asSequence().map { println("mapping $it"); it.length }
+println("built the pipeline, nothing printed above")
+println("now terminal: ${neverRun.first()}")
+```
+
+```text
+built the pipeline, nothing printed above
+mapping The
+now terminal: 3
+```
+
+The pipeline was built without executing anything, and the terminal `first()` mapped
+exactly one element.
+
+Operations are also classed by state: **stateless** ones like `map()` and `filter()` handle
+each element independently (`take()` and `drop()` need a small constant amount), while
+**stateful** ones need state proportional to the sequence length.
+
+## Seeing the difference
+
+Same pipeline, eager first:
+
+```kotlin
+val words = "The quick brown fox jumps over the lazy dog".split(" ")
+val lengthsList = words.filter { println("filter: $it"); it.length > 3 }
+    .map { println("length: ${it.length}"); it.length }
+    .take(4)
+
+println("Lengths of first 4 words longer than 3 chars:")
+println(lengthsList)
+```
+
+```text
+filter: The
+filter: quick
+filter: brown
+filter: fox
+filter: jumps
+filter: over
+filter: the
+filter: lazy
+filter: dog
+length: 5
+length: 5
+length: 5
+length: 4
+length: 4
+Lengths of first 4 words longer than 3 chars:
+[5, 5, 5, 4]
+```
+
+All nine filters run, then all five maps — including a fifth `length:` whose result
+`take(4)` throws away.
+
+Now lazily:
+
+```kotlin
+val lengthsSequence = words.asSequence()
+    .filter { println("filter: $it"); it.length > 3 }
+    .map { println("length: ${it.length}"); it.length }
+    .take(4)
+
+println("Lengths of first 4 words longer than 3 chars")
+println(lengthsSequence.toList())
+```
+
+```text
+Lengths of first 4 words longer than 3 chars
+filter: The
+filter: quick
+length: 5
+filter: brown
+length: 5
+filter: fox
+filter: jumps
+length: 5
+filter: over
+length: 4
+[5, 5, 5, 4]
+```
+
+Three things changed. The header prints **first**, because nothing ran until `toList()`.
+`filter` and `length` **interleave**, because each element goes through the whole chain.
+And processing **stops** at four results — `the`, `lazy` and `dog` are never examined.
+
+## How much it can matter
+
+Finding the first multiple of 7 in a million numbers:
+
+```kotlin
+var eagerOps = 0
+(1..1_000_000).filter { eagerOps++; it % 7 == 0 }.first()
+
+var lazyOps = 0
+(1..1_000_000).asSequence().filter { lazyOps++; it % 7 == 0 }.first()
+
+println("eager predicate calls: $eagerOps")
+println("lazy predicate calls:  $lazyOps")
+```
+
+```text
+eager predicate calls: 1000000
+lazy predicate calls:  7
+```
+
+The eager version filters all million elements into a new list and then takes the first.
+The lazy version stops at 7.
+
+## When not to use them
+
+Laziness is not free — each element passes through iterator state machines, and that
+overhead can outweigh the saving. The docs are explicit that you should weigh both. As a
+rule of thumb:
+
+| Use a `Sequence` | Use an `Iterable` |
+| :--- | :--- |
+| large collection with several chained steps | small collection |
+| short-circuiting (`first`, `any`, `take`) | single step |
+| infinite or generated data | you need the intermediate collections anyway |
+
+Sequences can usually be iterated more than once, but some implementations restrict
+themselves to a single pass — their documentation says so.
+
+## Related
+
+- [Collections](/language-basics/collections) — the eager counterpart
+- [Collection Operations](/collection-operations) — the same function names, applied eagerly
+- [Ranges](/language-basics/ranges) — another lazily-iterated value series
+
+import { Callout } from 'nextra/components'

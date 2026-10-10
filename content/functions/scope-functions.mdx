@@ -7,4 +7,13 @@ description: "Scope Functions in Kotlin."
 
 <DocSource docs={["scope-functions"]} />
 
-{/* placeholder */}
+The Kotlin standard library contains several functions whose sole purpose is to execute a block of code within the context of an object. When you call such a function on an object with a [lambda expression](https://kotlinlang.org/docs/lambdas.html) provided, it forms a temporary scope. In this scope, you can access the object without its name. Such functions are called _scope functions_. There are five of them: [`let`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/let.html), [`run`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/run.html) , [`with`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/with.html), [`apply`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/apply.html) , and [`also`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/also.html).
+
+<Callout type="info">
+  Summary quoted from the official documentation linked above, which remains the
+  authoritative source. This page has not been expanded with worked examples yet —
+  unlike the [Collection Operations](/collection-operations) section, nothing here has
+  been verified by running it.
+</Callout>
+
+import { Callout } from 'nextra/components'

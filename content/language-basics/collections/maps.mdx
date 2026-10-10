@@ -1,10 +1,77 @@
 ---
 title: "Maps"
-description: "Maps in Kotlin."
+description: "Map<K, V> — unique keys mapped to values, not a Collection, equal regardless of entry order."
 ---
 
 # Maps
 
-<DocSource docs={["map-operations"]} api={["kotlin-stdlib/kotlin.collections/-map/"]} />
+<DocSource docs={["map-operations", "collections-overview"]} api={["kotlin-stdlib/kotlin.collections/-map/"]} />
 
-{/* placeholder */}
+`Map<K, V>` stores key-value pairs, called **entries**. Keys are unique and each maps to
+exactly one value; different keys may hold equal values.
+
+<Callout type="info">
+  `Map` is **not** an inheritor of `Collection`, even though it is a Kotlin collection
+  type. A function taking `Collection<T>` will not accept a map.
+</Callout>
+
+Outputs below come from running `examples/language-basics/collections.kt`.
+
+```kotlin
+val numbersMap = mapOf("key1" to 1, "key2" to 2, "key3" to 3, "key4" to 1)
+
+println("All keys: ${numbersMap.keys}")
+println("All values: ${numbersMap.values}")
+if ("key2" in numbersMap) println("Value by key \"key2\": ${numbersMap["key2"]}")
+if (1 in numbersMap.values) println("The value 1 is in the map")
+```
+
+```text
+All keys: [key1, key2, key3, key4]
+All values: [1, 2, 3, 1]
+Value by key "key2": 2
+The value 1 is in the map
+```
+
+`keys` is a `Set`; `values` is a collection that can contain duplicates — note `1` appears
+twice.
+
+<Callout type="warning">
+  `"key2" in numbersMap` checks **keys**, not values. To search values, go through
+  `numbersMap.values` or `containsValue()`.
+</Callout>
+
+## Equality
+
+Two maps with equal entries are equal regardless of the order those entries were added:
+
+```kotlin
+val anotherMap = mapOf("key2" to 2, "key1" to 1, "key4" to 1, "key3" to 3)
+println("The maps are equal: ${numbersMap == anotherMap}")
+```
+
+```text
+The maps are equal: true
+```
+
+## MutableMap
+
+`MutableMap` adds write operations. Values can be updated; keys never change once an entry
+exists.
+
+```kotlin
+val numbersMap = mutableMapOf("one" to 1, "two" to 2)
+numbersMap.put("three", 3)
+numbersMap["one"] = 11
+```
+
+The default implementation is `LinkedHashMap`, which preserves insertion order when
+iterating. `HashMap` makes no such promise.
+
+## Related
+
+- [Map-specific operations](/collection-operations/collection-specific-operations/map-operations) — lookup fallbacks, `getOrPut`, filtering keys and values
+- [Grouping](/collection-operations/grouping) — building a `Map<K, List<V>>`
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — why a mutable key gets lost
+
+import { Callout } from 'nextra/components'

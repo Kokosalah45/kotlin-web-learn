@@ -1,10 +1,78 @@
 ---
 title: "Sets"
-description: "Sets in Kotlin."
+description: "Set<T> — unique elements, order-independent equality, LinkedHashSet by default."
 ---
 
 # Sets
 
-<DocSource docs={["set-operations"]} api={["kotlin-stdlib/kotlin.collections/-set/"]} />
+<DocSource docs={["set-operations", "collections-overview"]} api={["kotlin-stdlib/kotlin.collections/-set/"]} />
 
-{/* placeholder */}
+`Set<T>` stores **unique** elements. Their order is generally undefined. `null` counts as
+a value like any other, so a set can contain at most one.
+
+Outputs below come from running `examples/language-basics/collections.kt`.
+
+```kotlin
+val setNumbers = setOf(1, 2, 3, 4)
+println("Number of elements: ${setNumbers.size}")
+if (setNumbers.contains(1)) println("1 is in the set")
+
+val numbersBackwards = setOf(4, 3, 2, 1)
+println("The sets are equal: ${setNumbers == numbersBackwards}")
+```
+
+```text
+Number of elements: 4
+1 is in the set
+The sets are equal: true
+```
+
+Two sets are equal when they have the same size and every element of one has an equal
+element in the other — order plays no part.
+
+```kotlin
+println(setOf(null, null, 1).size)
+```
+
+```text
+2
+```
+
+Three arguments, two elements: the duplicate `null` collapsed.
+
+## Order is undefined but not arbitrary
+
+The default `MutableSet` implementation is `LinkedHashSet`, which **preserves insertion
+order** when iterating. That makes `first()` and `last()` predictable in practice:
+
+```kotlin
+println(setNumbers.first() == numbersBackwards.first())
+println(setNumbers.first() == numbersBackwards.last())
+```
+
+```text
+false
+true
+```
+
+<Callout type="warning">
+  Those two sets are equal, yet they iterate in opposite directions. Equality ignores
+  order; iteration does not. Treat positional access on a set as an implementation detail.
+</Callout>
+
+`HashSet` is the alternative: no order guarantee at all, less memory for the same number of
+elements.
+
+## What makes elements "unique"
+
+Uniqueness is decided by `equals()` and `hashCode()`, which is why a data class
+deduplicates and a plain class does not — see
+[Equality & Hashing](/collection-operations/equality-and-hashing).
+
+## Related
+
+- [Set-specific operations](/collection-operations/collection-specific-operations/set-operations) — `union`, `intersect`, `subtract`
+- [Equality & Hashing](/collection-operations/equality-and-hashing) — why mutable elements break sets
+- [Lists](/language-basics/collections/lists) — when order and duplicates matter
+
+import { Callout } from 'nextra/components'

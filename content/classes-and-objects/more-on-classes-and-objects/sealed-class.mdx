@@ -7,4 +7,13 @@ description: "Sealed Class in Kotlin."
 
 <DocSource docs={["sealed-classes"]} />
 
-{/* placeholder */}
+_Sealed_ classes and interfaces provide controlled inheritance of your class hierarchies. All direct subclasses of a sealed class are known at compile time. No other subclasses may appear outside the module and package within which the sealed class is defined. The same logic applies to sealed interfaces and their implementations: once a module with a sealed interface is compiled, no new implementations can be created.
+
+<Callout type="info">
+  Summary quoted from the official documentation linked above, which remains the
+  authoritative source. This page has not been expanded with worked examples yet —
+  unlike the [Collection Operations](/collection-operations) section, nothing here has
+  been verified by running it.
+</Callout>
+
+import { Callout } from 'nextra/components'

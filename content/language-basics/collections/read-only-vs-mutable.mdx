@@ -1,10 +1,106 @@
 ---
 title: "read-only vs mutable"
-description: "read-only vs mutable in Kotlin."
+description: "Why every collection type comes as a pair of interfaces, why val does not mean immutable, and why read-only is not immutable either."
 ---
 
 # read-only vs mutable
 
 <DocSource docs={["collections-overview"]} />
 
-{/* placeholder */}
+Each collection type is represented by **two** interfaces:
+
+- a **read-only** interface with operations for accessing elements — `List`, `Set`, `Map`
+- a **mutable** interface extending it with writes — `MutableList`, `MutableSet`,
+  `MutableMap`
+
+Two things about this routinely trip people up, and they are different things.
+
+Outputs below come from running `examples/language-basics/collections.kt` and
+`examples/collection-operations/write-operations.kt`.
+
+## 1. `val` does not make a collection immutable
+
+`val` protects the **reference**, not the contents. A mutable collection in a `val` is
+still fully mutable:
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three", "four")
+numbers.add("five")   // fine
+println(numbers)
+// numbers = mutableListOf("six", "seven")   // compilation error
+```
+
+```text
+[one, two, three, four, five]
+```
+
+The docs recommend `val` anyway: you lose nothing, and you prevent the reference being
+swapped out from under other code. Reassignment is the thing worth forbidding.
+
+## 2. Read-only is not immutable
+
+A `List` reference can point at a `MutableList`. You cannot write *through the read-only
+reference*, but whoever holds the mutable one still can — and your view updates:
+
+```kotlin
+val backing = mutableListOf("a", "b")
+val readOnlyView: List<String> = backing
+backing.add("c")
+println(readOnlyView)
+```
+
+```text
+[a, b, c]
+```
+
+<Callout type="warning">
+  `readOnlyView` has no `add()` and still changed. Read-only means "this reference offers
+  no write operations", not "these contents are frozen". For a genuine snapshot, copy with
+  `toList()`. For deeply immutable collections, you need
+  [kotlinx.collections.immutable](https://github.com/Kotlin/kotlinx.collections.immutable),
+  which is not part of the standard library.
+</Callout>
+
+## The four combinations
+
+| Declaration | Reassign the variable | Modify the contents |
+| :--- | :--- | :--- |
+| `val list: List<T>` | no | no (through this reference) |
+| `var list: List<T>` | yes | no (through this reference) |
+| `val list: MutableList<T>` | no | yes |
+| `var list: MutableList<T>` | yes | yes |
+
+This also decides what `+=` does — see
+[the `+=` trap](/collection-operations/plus-and-minus-operators#the--trap).
+
+## Variance follows from this
+
+Read-only types are covariant: a `List<Rectangle>` is a `List<Shape>`. Mutable types are
+not, and cannot be — if `MutableList<Rectangle>` were a `MutableList<Shape>` you could add
+a `Circle` to it and break the element type at runtime. Maps are covariant on the value
+type but not the key type.
+
+## Returning collections from an API
+
+Exposing a `List` while holding a `MutableList` internally does not protect the data if
+the same instance leaks:
+
+```kotlin
+// the caller sees changes you make later
+val items: List<String> get() = _items
+
+// the caller gets a snapshot
+val items: List<String> get() = _items.toList()
+```
+
+Which you want depends on whether callers should observe later updates. Be deliberate —
+the type alone does not tell them.
+
+## Related
+
+- [Collections](/language-basics/collections) — the interface hierarchy
+- [Write Operations](/collection-operations/write-operations) — the mutable API
+- [Constructing Collections](/collection-operations/constructing-collections) — copies vs references
+- [val vs var](/language-basics/variables/val-vs-var) — the same distinction for plain variables
+
+import { Callout } from 'nextra/components'
