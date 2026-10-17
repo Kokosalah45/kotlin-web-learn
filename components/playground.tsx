@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ExecutableCode, PlaygroundFragment } from 'kotlin-playground'
 import { DEFAULT_KOTLIN_VERSION, MAX_CODE_BYTES } from '@/lib/kotlin'
+import { putLocalSnippet } from '@/lib/local-snippets'
+import { newId } from '@/lib/snippet-ids'
 
 type Props = {
   /** Initial editor contents. */
@@ -29,7 +31,11 @@ type Props = {
   onCodeChange?: (code: string) => void
 }
 
-type Share = { id: string; url: string }
+/**
+ * `local` means the snippet went into this browser's IndexedDB because the
+ * server has no store: the link opens here and nowhere else.
+ */
+type Share = { id: string; url: string; local: boolean }
 
 /**
  * CodeMirror themes bundled with kotlin-playground. `getTheme()` warns about
@@ -173,6 +179,32 @@ export function Playground({
     }
   }, [source, theme, version])
 
+  /**
+   * The fallback when no server store is configured. The id is minted here
+   * with the same generator the route handler uses, so a locally saved
+   * snippet is addressed exactly like a stored one.
+   */
+  const saveLocally = useCallback(
+    async (code: string) => {
+      const id = newId()
+      try {
+        await putLocalSnippet(id, {
+          code,
+          kotlinVersion: fragmentRef.current?.state?.compilerVersion ?? version,
+          createdAt: new Date().toISOString()
+        })
+      } catch {
+        setSaveError(
+          'This site has no snippet store, and this browser will not store it either.'
+        )
+        return
+      }
+      setShare({ id, url: `/p/${id}`, local: true })
+      setCopied(false)
+    },
+    [version]
+  )
+
   const save = useCallback(async () => {
     const current = fragmentRef.current?.getCode() ?? source
     if (current.trim() === '') {
@@ -197,19 +229,27 @@ export function Playground({
           kotlinVersion: fragmentRef.current?.state?.compilerVersion ?? version
         })
       })
+      // 503 is the one answer this route gives when the deployment has no
+      // snippet store at all (`NoStoreConfigured`), as opposed to a rejected
+      // or failed save. That is the case the browser can cover for itself.
+      if (response.status === 503) {
+        await saveLocally(current)
+        return
+      }
+
       const body = (await response.json()) as { id?: string; url?: string; error?: string }
       if (!response.ok || !body.id || !body.url) {
         setSaveError(body.error ?? 'Save failed (' + response.status + ').')
         return
       }
-      setShare({ id: body.id, url: body.url })
+      setShare({ id: body.id, url: body.url, local: false })
       setCopied(false)
     } catch {
       setSaveError('Save failed — the network request did not complete.')
     } finally {
       setSaving(false)
     }
-  }, [source, version])
+  }, [saveLocally, source, version])
 
   const shareUrl = share ? new URL(share.url, window.location.origin).toString() : null
 
@@ -258,10 +298,17 @@ export function Playground({
 
       {shareUrl && share && (
         <p className="kl-playground__note" role="status">
-          Saved. <a href={share.url}>{shareUrl}</a>{' '}
+          {share.local ? 'Saved in this browser.' : 'Saved.'}{' '}
+          <a href={share.url}>{shareUrl}</a>{' '}
           <button type="button" className="kl-playground__copy" onClick={copy}>
             {copied ? 'Copied' : 'Copy'}
           </button>
+          {share.local && (
+            <span className="kl-playground__warning">
+              This site has no snippet store, so the snippet went into this browser&rsquo;s
+              own storage. The link opens here; it will not open for anyone else.
+            </span>
+          )}
         </p>
       )}
       {saveError && (

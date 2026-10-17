@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto'
 import { Redis } from '@upstash/redis'
 import { MAX_CODE_BYTES } from '@/lib/kotlin'
+import { isValidId, newId } from '@/lib/snippet-ids'
 
 /**
  * A saved playground snippet. `kotlinVersion` records which compiler the author
@@ -13,28 +13,10 @@ export type Snippet = {
   createdAt: string
 }
 
-/** Crockford base32 minus the ambiguous letters i, l, o and u. */
-const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'
-const ID_LENGTH = 10
-const ID_PATTERN = new RegExp(`^[${ALPHABET}]{${ID_LENGTH}}$`)
-
-export { MAX_CODE_BYTES }
-
-/**
- * `ALPHABET.length` is 32 and 256 divides evenly by 32, so masking a uniform
- * byte with 31 stays uniform — no rejection sampling needed. 10 characters is
- * 50 bits.
- */
-export function newId(): string {
-  const bytes = randomBytes(ID_LENGTH)
-  let id = ''
-  for (const byte of bytes) id += ALPHABET[byte & 31]
-  return id
-}
-
-export function isValidId(id: string): boolean {
-  return ID_PATTERN.test(id)
-}
+// Re-exported so the route handlers keep importing everything about a snippet
+// from one module; the definitions live in `lib/snippet-ids.ts` because the
+// browser mints ids too.
+export { MAX_CODE_BYTES, isValidId, newId }
 
 const key = (id: string) => `snippet:${id}`
 

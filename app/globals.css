@@ -135,6 +135,23 @@
   word-break: break-all;
 }
 
+/* Said next to a link that only works in this browser, so it has to read as a
+   caveat rather than as more of the confirmation above it. */
+.kl-playground__warning {
+  display: block;
+  margin-top: 0.3rem;
+  opacity: 0.8;
+}
+
+.kl-snippet-page__local {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-left: 3px solid #d9a441;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, #d9a441 7%, transparent);
+  opacity: 1;
+}
+
 /* The editor the library inserts. Nextra's prose styles would otherwise give
    the hidden <pre> target and the inserted markup unwanted spacing. */
 .kl-playground__host > pre {

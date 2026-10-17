@@ -9,9 +9,9 @@ Edit the code and press **Run**. Nothing is installed and nothing runs on your m
 the code is sent to a compiler and the output comes back.
 
 You never have to come back here for it: **Playground** in the top bar reopens this page,
-and the **Run Kotlin** button in the bottom-right corner of every page — or <kbd>Alt</kbd>
-+ <kbd>R</kbd>, <kbd>⌥</kbd><kbd>R</kbd> on a Mac — opens the same editor over whatever you
-are reading, without losing your place. What you type into it follows you from page to
+and the **Run Kotlin** button in the bottom-right corner of every page — or
+<kbd>Alt</kbd>+<kbd>R</kbd>, <kbd>⌥</kbd><kbd>R</kbd> on a Mac — opens the same editor over
+whatever you are reading, without losing your place. What you type into it follows you from page to
 page and survives a reload, for as long as the browser tab is open.
 
 <Runnable
@@ -75,8 +75,10 @@ instead of changing the old one, so a link you have already shared keeps showing
 shared. There is no listing and no index — a snippet is reachable only by its id, which is
 50 bits of randomness.
 
-Saving needs a Redis store to be connected. Without one the button reports that no store is
-configured, and running code still works.
+Saving needs a Redis store to be connected. Without one the snippet is kept in your own
+browser instead, and the link says so: it opens the snippet on this device, in this browser,
+and nowhere else — clearing site data takes it with you. Running code is unaffected either
+way.
 
 ## Making a page's example runnable
 

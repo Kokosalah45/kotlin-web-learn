@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { LocalSnippet } from '@/components/local-snippet'
 import { Playground } from '@/components/playground'
 import { NoStoreConfigured, isValidId, snippetStore, type Snippet } from '@/lib/snippets'
 
@@ -12,20 +13,23 @@ export const dynamic = 'force-dynamic'
 
 type PageProps = { params: Promise<{ id: string }> }
 
-async function load(id: string): Promise<Snippet> {
+/**
+ * Null means "not on the server" — no store configured, or a store that has
+ * never held this id. The page then hands the id to the browser, which may
+ * have saved it in IndexedDB when the server had nowhere to put it. A
+ * malformed id is not a snippet anywhere, so that one is still a 404.
+ */
+async function load(id: string): Promise<Snippet | null> {
   if (!isValidId(id)) notFound()
-  let snippet: Snippet | null
   try {
     // Read the store directly instead of fetching /api/snippets/[id]: a server
     // component has no origin to fetch from, and the route handler adds nothing
     // but a second hop.
-    snippet = await snippetStore().get(id)
+    return await snippetStore().get(id)
   } catch (error) {
-    if (error instanceof NoStoreConfigured) notFound()
+    if (error instanceof NoStoreConfigured) return null
     throw error
   }
-  if (!snippet) notFound()
-  return snippet
 }
 
 export const metadata: Metadata = {
@@ -39,6 +43,7 @@ export const metadata: Metadata = {
 export default async function SavedSnippetPage({ params }: PageProps) {
   const { id } = await params
   const snippet = await load(id)
+  if (!snippet) return <LocalSnippet id={id} />
   const saved = new Date(snippet.createdAt)
 
   return (

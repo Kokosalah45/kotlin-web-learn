@@ -186,8 +186,22 @@ passes them to the documented `new Redis({ url, token })` constructor rather tha
 set; unset means links never rot.
 
 With no credentials and no `VERCEL` in the environment, saves go to `.snippets/` on disk so
-`pnpm dev` works from a clean checkout. Deployed with no store configured, saving returns
-503 with a message saying so and running code still works.
+`pnpm dev` works from a clean checkout.
+
+Deployed with no store configured, `POST /api/snippets` answers 503 — and the browser keeps
+the snippet itself rather than losing it. `lib/local-snippets.ts` writes it to IndexedDB
+(database `kl-playground`, store `snippets`, keyed by the same 10-character id the server
+would have minted, which is why `lib/snippet-ids.ts` is a module of its own), and `/p/[id]`
+falls back to `components/local-snippet.tsx`, which reads it back. That fallback runs
+whenever the server has nothing for a well-formed id — no store, or a store that has never
+held it — since a snippet saved while the site had no store exists only in the browser that
+saved it. A malformed id is still a 404.
+
+**A locally saved snippet is not a share link, and both the save note and the page say so.**
+IndexedDB is per-origin and per-browser profile: the link opens on that device, in that
+browser, and nowhere else. It is not durable either — the database is evictable under
+storage pressure and goes away with site data. The fallback is for not losing what someone
+just wrote; connect a store if links are supposed to travel.
 
 Two things this deliberately does not do: there is **no rate limit** on `POST /api/snippets`
 beyond a 64 KiB body cap, and nothing deletes a snippet. Both matter if the site gets
@@ -228,8 +242,9 @@ content/              one .mdx per roadmap node, mirroring the category tree
 data/roadmap.mjs      the 153-node manifest: titles, doc slugs, API paths
 examples/             runnable Kotlin backing the output blocks
 scripts/              scaffold, link verification, docs fetch, example runner
-components/           DocSource, Runnable + Playground (the editor), the dock, Logo
-lib/                  snippet store and the shared Kotlin constants
+components/           DocSource, Runnable + Playground (the editor), the dock,
+                      the browser-stored snippet page, Logo
+lib/                  snippet stores (server, browser), ids, shared Kotlin constants
 types/                hand-written declarations for kotlin-playground, which ships none
 .content-cache/       fetched official Markdown (gitignored)
 ```
