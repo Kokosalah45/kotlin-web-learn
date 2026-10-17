@@ -135,13 +135,6 @@
   word-break: break-all;
 }
 
-/* Said next to a link that only works in this browser, so it has to read as a
-   caveat rather than as more of the confirmation above it. */
-.kl-playground__warning {
-  display: block;
-  margin-top: 0.3rem;
-  opacity: 0.8;
-}
 
 .kl-snippet-page__local {
   padding: 0.6rem 0.8rem;
@@ -319,55 +312,51 @@
   }
 }
 
-/* The dock itself. Closed, it is hidden but still laid out — see the comment
-   in components/playground-dock.tsx for why it is not `display: none`. */
+/* The drawer. It takes up one corner rather than the viewport, and there is
+   no backdrop: the page keeps its scrolling and its clicks while it is open,
+   which is the whole point — reading and running code happen together.
+
+   Closed, it is hidden but still laid out; see the comment in
+   components/playground-dock.tsx for why it is not `display: none`. */
 .kl-dock {
   position: fixed;
-  inset: 0;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
   z-index: 50;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-end;
+  /* Only the panel takes clicks; the strip of layout around it must not sit
+     over the page like an invisible sheet. */
+  pointer-events: none;
 }
 
 .kl-dock[data-open='false'] {
   visibility: hidden;
-  pointer-events: none;
-}
-
-.kl-dock__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgb(0 0 0 / 0.45);
-  opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.kl-dock[data-open='false'] .kl-dock__scrim {
-  opacity: 0;
 }
 
 .kl-dock__panel {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(68rem, 100%);
-  max-height: min(88vh, 54rem);
-  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-  border-bottom: none;
-  border-radius: 0.9rem 0.9rem 0 0;
+  width: min(60rem, 100%);
+  height: min(62vh, 34rem);
+  max-height: calc(100vh - 2rem);
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.9rem;
   background: rgb(var(--nextra-bg));
-  box-shadow: 0 -12px 40px rgb(0 0 0 / 0.35);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+  pointer-events: auto;
   transition: transform 0.22s ease;
 }
 
 .kl-dock[data-open='false'] .kl-dock__panel {
-  transform: translateY(100%);
+  /* Past its own height plus the gap below it, so nothing peeks out. */
+  transform: translateY(calc(100% + 1rem));
 }
 
 @media (prefers-reduced-motion: reduce) {
   .kl-dock__panel,
-  .kl-dock__scrim,
   .kl-dock-launcher {
     transition: none;
   }
@@ -420,22 +409,62 @@
 /* The editor scrolls inside the panel rather than growing past its bottom
    edge, which it would do as soon as a run opened the output pane. */
 .kl-dock__body {
+  display: flex;
   flex: 1;
+  gap: 1rem;
   min-height: 0;
   overflow: auto;
   padding: 0 1rem 1rem;
 }
 
-/* Inside the dock the frame is the panel, so the editor drops its own. */
+/* Inside the drawer the frame is the panel, so the editor drops its own. */
 .kl-dock__body .kl-playground {
+  flex: 1;
+  min-width: 0;
   margin: 1rem 0 0;
 }
 
 .kl-dock__body .kl-playground--tall {
-  --kl-playground-min-height: min(52vh, 30rem);
+  --kl-playground-min-height: min(38vh, 22rem);
+}
+
+/* The saved list sits beside the editor where there is room for a column, and
+   under it where there is not. */
+.kl-dock__saved {
+  flex: none;
+  width: 15rem;
+  margin-top: 1rem;
+  overflow: auto;
+}
+
+.kl-dock__saved-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+@media (max-width: 52rem) {
+  .kl-dock__body {
+    display: block;
+  }
+
+  .kl-dock__saved {
+    width: auto;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 40rem) {
+  .kl-dock {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+  }
+
   .kl-dock-launcher {
     right: 0.75rem;
     bottom: 0.75rem;
@@ -443,6 +472,81 @@
   }
 
   .kl-dock__panel {
-    max-height: 92vh;
+    height: min(78vh, 40rem);
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The list of saved snippets, in the drawer and on /playground.
+   --------------------------------------------------------------------------- */
+.kl-saved {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kl-saved__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+.kl-saved__item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  margin: 0 0 0.3rem;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 0.4rem;
+}
+
+.kl-saved__item:hover {
+  border-color: color-mix(in srgb, currentColor 28%, transparent);
+}
+
+.kl-saved__open {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kl-saved__title {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kl-saved__meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.6875rem;
+  opacity: 0.6;
+}
+
+.kl-saved__remove {
+  flex: none;
+  padding: 0 0.5rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.kl-saved__remove:hover {
+  opacity: 1;
 }

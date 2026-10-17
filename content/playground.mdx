@@ -64,21 +64,21 @@ than the one that was asked for.
 - **Not instant.** Measured end-to-end against the server on 2026-10-10, a small snippet
   took **1.4–1.8 s** per run, compilation included.
 
-## Saving and sharing
+## Saving
 
-**Save & share** stores exactly what is in the editor and returns a link such as
-`/p/8kq3mz0r4t`. Opening it loads the code into a fresh editor, set to the Kotlin version
-the snippet was saved against.
+**Save** keeps exactly what is in the editor, in this browser. Saved snippets are listed
+newest first — here, and in the drawer on every other page — and opening one loads it back
+into the editor at the Kotlin version it was saved against. The × removes one.
 
-Snippets are write-once: editing a saved snippet and saving again produces a new link
-instead of changing the old one, so a link you have already shared keeps showing what you
-shared. There is no listing and no index — a snippet is reachable only by its id, which is
-50 bits of randomness.
+<SavedSnippets />
 
-Saving needs a Redis store to be connected. Without one the snippet is kept in your own
-browser instead, and the link says so: it opens the snippet on this device, in this browser,
-and nowhere else — clearing site data takes it with you. Running code is unaffected either
-way.
+Saving is write-once: editing a saved snippet and saving again adds a second entry rather
+than replacing the first, so an earlier version is still there to go back to.
+
+The list is this browser's own, not an account. Snippets are held in IndexedDB, so they do
+not follow you to another browser or another device, and clearing this site's data removes
+them. Nothing is uploaded when you save, and there is no link to hand to anyone else; each
+entry does have a page of its own at `/p/<id>` for a bigger editor.
 
 ## Making a page's example runnable
 

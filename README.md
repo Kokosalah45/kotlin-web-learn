@@ -135,8 +135,10 @@ away:
 - **Playground** in the navbar, which goes to `/playground` (hidden under 48rem, where the
   navbar has no room for it).
 - **Run Kotlin**, the button in the bottom-right corner of every page, which opens
-  `components/playground-dock.tsx` — the same editor in a panel over the current page. It is
-  suppressed on `/playground` and `/p/[id]`, which already show one.
+  `components/playground-dock.tsx` — the same editor, plus the list of saved snippets, in a
+  drawer in the corner of the current page. It is a drawer and not a dialog: no backdrop, no
+  scroll lock, nothing `inert`, so the page it sits over stays readable and clickable while
+  it is open. It is suppressed on `/playground` and `/p/[id]`, which already show an editor.
 - **Alt+R** (Option+R on macOS), which toggles the dock from anywhere, including the pages
   that hide the launcher. Matched on `event.code === 'KeyR'`, since Option+R on macOS
   produces `®`; Ctrl/Cmd+K was not available, as the theme's search owns it.
@@ -161,15 +163,40 @@ assumed.
 
 ### Saved snippets
 
+**Save** keeps the snippet in the reader's own browser, and the drawer lists what is there,
+newest first. There is no share link: the site's store has no index to list by design (a
+snippet is reachable only by its id), so a list has to be the browser's, and once the list
+is the browser's there is nothing to hand anyone else. Opening a row loads it back into the
+editor in place; the × deletes it.
+
+`lib/local-snippets.ts` is that store — IndexedDB, database `kl-playground`, object store
+`snippets`, keyed by id. Ids are 10 characters of Crockford base32 (50 bits) from
+`lib/snippet-ids.ts`, which is a module of its own because both the browser and the route
+handler mint them. Saving is write-once: an edited snippet is saved as another entry, so an
+earlier version stays reachable.
+
+`components/saved-snippets.tsx` renders the list in both places it appears. In the drawer it
+takes an `onOpen`, which loads the snippet into the editor beside it (by changing the
+editor's `key` — `<Playground>` reads `code` when it mounts). On `/playground`, where there
+is no drawer, it has no `onOpen` and each row links to `/p/<id>` instead.
+
+What this is not: a library that follows the reader. IndexedDB is per-origin **and**
+per-browser profile, so the snippets do not reach another browser or another device,
+clearing site data removes them, and the database is evictable under storage pressure. The
+UI says so in both places rather than letting a reader assume otherwise.
+
+#### The server store, which the editor no longer writes to
+
 | Route | Does |
 | :--- | :--- |
 | `POST /api/snippets` | Stores `{ code, kotlinVersion, createdAt }`, returns `{ id, url, createdAt }` |
 | `GET /api/snippets/[id]` | Reads one back, or 404 |
-| `/p/[id]` | Opens a saved snippet in the editor |
+| `/p/[id]` | Opens one snippet in a full-page editor |
 
-Ids are 10 characters of Crockford base32 (50 bits). Snippets are write-once — saving an
-edited snippet mints a new id, so a shared link keeps showing what was shared. There is no
-listing: a snippet is reachable only by its id.
+`/p/[id]` still reads the server store first and falls back to
+`components/local-snippet.tsx`, which looks the id up in IndexedDB — so links from when the
+editor did post to the server keep working, and a browser-saved snippet has a page of its
+own. A malformed id is a 404; a well-formed id nobody holds gets a page saying so.
 
 Storage is [Upstash Redis](https://vercel.com/marketplace/upstash) through the Vercel
 Marketplace, which injects the credentials. Note that **Vercel KV no longer exists** — it
@@ -183,29 +210,12 @@ vercel install upstash
 `KV_REST_API_URL`/`KV_REST_API_TOKEN` for a store carried over from the retired KV. It
 passes them to the documented `new Redis({ url, token })` constructor rather than
 `Redis.fromEnv()`, so neither naming is baked in. `SNIPPET_TTL_DAYS` expires snippets if
-set; unset means links never rot.
-
-With no credentials and no `VERCEL` in the environment, saves go to `.snippets/` on disk so
-`pnpm dev` works from a clean checkout.
-
-Deployed with no store configured, `POST /api/snippets` answers 503 — and the browser keeps
-the snippet itself rather than losing it. `lib/local-snippets.ts` writes it to IndexedDB
-(database `kl-playground`, store `snippets`, keyed by the same 10-character id the server
-would have minted, which is why `lib/snippet-ids.ts` is a module of its own), and `/p/[id]`
-falls back to `components/local-snippet.tsx`, which reads it back. That fallback runs
-whenever the server has nothing for a well-formed id — no store, or a store that has never
-held it — since a snippet saved while the site had no store exists only in the browser that
-saved it. A malformed id is still a 404.
-
-**A locally saved snippet is not a share link, and both the save note and the page say so.**
-IndexedDB is per-origin and per-browser profile: the link opens on that device, in that
-browser, and nowhere else. It is not durable either — the database is evictable under
-storage pressure and goes away with site data. The fallback is for not losing what someone
-just wrote; connect a store if links are supposed to travel.
+set; unset means links never rot. With no credentials and no `VERCEL` in the environment,
+writes go to `.snippets/` on disk; deployed with neither, the route answers 503.
 
 Two things this deliberately does not do: there is **no rate limit** on `POST /api/snippets`
-beyond a 64 KiB body cap, and nothing deletes a snippet. Both matter if the site gets
-traffic.
+beyond a 64 KiB body cap, and nothing deletes a snippet from the server store. Both matter
+if the site gets traffic and anything starts posting to that route again.
 
 ### Why not run the compiler here
 
@@ -242,8 +252,8 @@ content/              one .mdx per roadmap node, mirroring the category tree
 data/roadmap.mjs      the 153-node manifest: titles, doc slugs, API paths
 examples/             runnable Kotlin backing the output blocks
 scripts/              scaffold, link verification, docs fetch, example runner
-components/           DocSource, Runnable + Playground (the editor), the dock,
-                      the browser-stored snippet page, Logo
+components/           DocSource, Runnable + Playground (the editor), the drawer,
+                      the saved list, the browser-stored snippet page, Logo
 lib/                  snippet stores (server, browser), ids, shared Kotlin constants
 types/                hand-written declarations for kotlin-playground, which ships none
 .content-cache/       fetched official Markdown (gitignored)

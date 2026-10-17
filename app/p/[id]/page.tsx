@@ -51,8 +51,8 @@ export default async function SavedSnippetPage({ params }: PageProps) {
       <h1>Saved snippet</h1>
       <p className="kl-snippet-page__meta">
         Saved <time dateTime={snippet.createdAt}>{saved.toISOString().slice(0, 10)}</time>, to run
-        on Kotlin {snippet.kotlinVersion}. Edit it and save again to get a new link — snippets are
-        never overwritten.
+        on Kotlin {snippet.kotlinVersion}. Edit it and save again to add another entry — snippets
+        are never overwritten.
       </p>
 
       <Playground

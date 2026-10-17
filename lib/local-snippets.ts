@@ -91,6 +91,9 @@ async function transact<T>(
   }
 }
 
+/** A stored snippet together with the id it is filed under. */
+export type SavedSnippet = Snippet & { id: string }
+
 /** @throws {NoLocalStore} when the browser has nowhere to put it. */
 export function putLocalSnippet(id: string, snippet: Snippet): Promise<unknown> {
   return transact('readwrite', (store) => store.put(snippet, id))
@@ -100,4 +103,39 @@ export function putLocalSnippet(id: string, snippet: Snippet): Promise<unknown> 
 export async function getLocalSnippet(id: string): Promise<Snippet | null> {
   const snippet = await transact<Snippet | undefined>('readonly', (store) => store.get(id))
   return snippet ?? null
+}
+
+/**
+ * Everything this browser holds, newest first.
+ *
+ * A cursor rather than `getAll()`, which returns the values without the keys
+ * the snippets are filed under — and the id is what `/p/<id>` needs. The store
+ * is keyed by id, so cursor order is alphabetical by a random string; the sort
+ * below is what makes it chronological.
+ */
+export async function listLocalSnippets(): Promise<SavedSnippet[]> {
+  const db = await openDatabase()
+  try {
+    const snippets = await new Promise<SavedSnippet[]>((resolve, reject) => {
+      const found: SavedSnippet[] = []
+      const tx = db.transaction(STORE, 'readonly')
+      const request = tx.objectStore(STORE).openCursor()
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) return
+        found.push({ ...(cursor.value as Snippet), id: String(cursor.key) })
+        cursor.continue()
+      }
+      tx.oncomplete = () => resolve(found)
+      tx.onerror = () => reject(tx.error ?? new NoLocalStore())
+      tx.onabort = () => reject(tx.error ?? new NoLocalStore())
+    })
+    return snippets.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  } finally {
+    db.close()
+  }
+}
+
+export function deleteLocalSnippet(id: string): Promise<unknown> {
+  return transact('readwrite', (store) => store.delete(id))
 }

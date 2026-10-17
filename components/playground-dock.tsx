@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Playground } from '@/components/playground'
+import { SavedSnippets } from '@/components/saved-snippets'
+import type { SavedSnippet } from '@/lib/local-snippets'
 
 /** What an untouched dock editor opens with. */
 const STARTER = `fun main() {
@@ -59,6 +61,11 @@ const hasOwnPlayground = (pathname: string) =>
  * `kotlin-playground` bundle (it is a dynamic import inside `<Playground>`) and
  * never hits `api.kotlinlang.org` for the version list.
  *
+ * It is a drawer, not a dialog: there is no backdrop, the page behind it keeps
+ * its scrolling and its clicks, and it is anchored to one corner rather than
+ * spread across the viewport. Reading on and running code are meant to happen
+ * at the same time, so the editor must not be something to dismiss first.
+ *
  * After that first open the panel stays mounted and is hidden with
  * `visibility`, not `display: none`, so that whatever the reader typed — and
  * the output of their last run — is still there the next time they open it,
@@ -109,6 +116,24 @@ export function PlaygroundDock() {
     launcherRef.current?.focus()
   }, [])
 
+  /** Bumped after a save, so the list pulls IndexedDB again. */
+  const [listRevision, setListRevision] = useState(0)
+
+  /**
+   * The editor's `key`. Changing a key is what makes React build a fresh
+   * editor around newly chosen code, since `<Playground>` reads `code` once,
+   * when it mounts. Only opening a saved snippet moves it — a save must leave
+   * the editor, its cursor and the output of the last run exactly as they are.
+   */
+  const [editorKey, setEditorKey] = useState(0)
+
+  const openSaved = useCallback((snippet: SavedSnippet) => {
+    setInitialCode(snippet.code)
+    setEditorKey((current) => current + 1)
+  }, [])
+
+  const noteSaved = useCallback(() => setListRevision((current) => current + 1), [])
+
   // Escape closes, as a dialog should.
   useEffect(() => {
     if (!open) return
@@ -134,24 +159,11 @@ export function PlaygroundDock() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open, show, hide])
 
-  // Move focus into the panel so a keyboard user is not left behind on the
-  // launcher. Nothing traps focus here: the panel covers the page but does not
-  // claim `aria-modal`, so tabbing past it reaches the page underneath rather
-  // than nowhere.
+  // Move focus into the drawer so a keyboard user is not left behind on the
+  // launcher. Nothing is trapped and nothing is `aria-modal`: tabbing past the
+  // last control reaches the page again, which is the point of a drawer.
   useEffect(() => {
     if (open) closeRef.current?.focus()
-  }, [open])
-
-  // The panel is as tall as most viewports, so the page behind it should not
-  // scroll under it. The previous value is restored rather than cleared, in
-  // case something else (the theme's mobile menu) also set it.
-  useEffect(() => {
-    if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
   }, [open])
 
   const showLauncher = !hasOwnPlayground(pathname)
@@ -187,8 +199,11 @@ export function PlaygroundDock() {
 
       {everOpened && (
         <div className="kl-dock" data-open={open} inert={!open}>
-          <div className="kl-dock__scrim" onClick={hide} />
-          <section className="kl-dock__panel" role="dialog" aria-label="Kotlin playground">
+          <section
+            className="kl-dock__panel"
+            role="region"
+            aria-label="Kotlin playground"
+          >
             <header className="kl-dock__head">
               <span className="kl-dock__title">
                 Kotlin playground
@@ -211,11 +226,20 @@ export function PlaygroundDock() {
             </header>
             <div className="kl-dock__body">
               <Playground
+                key={editorKey}
                 code={initialCode}
                 label="Scratch"
                 size="tall"
                 onCodeChange={writeSaved}
+                onSaved={noteSaved}
               />
+              <aside className="kl-dock__saved">
+                <h2 className="kl-dock__saved-heading">
+                  Saved
+                  <span className="kl-dock__hint">in this browser</span>
+                </h2>
+                <SavedSnippets onOpen={openSaved} revision={listRevision} />
+              </aside>
             </div>
           </section>
         </div>

@@ -59,9 +59,9 @@ export function LocalSnippet({ id }: Props) {
       <article className="kl-snippet-page">
         <h1>No such snippet</h1>
         <p className="kl-snippet-page__meta">
-          Nothing is saved under <code>{id}</code>, here or on the server. A snippet saved
-          while this site had no snippet store lives in the browser that saved it, so a link
-          like this one does not open anywhere else.
+          Nothing is saved under <code>{id}</code>, here or on the server. Snippets saved from
+          the playground live in the browser that saved them, so a page like this one does not
+          open anywhere else.
         </p>
         <p className="kl-snippet-page__meta">
           <Link href="/playground">Open an empty playground</Link> ·{' '}
@@ -78,12 +78,12 @@ export function LocalSnippet({ id }: Props) {
       <h1>Saved snippet</h1>
       <p className="kl-snippet-page__meta">
         Saved <time dateTime={state.snippet.createdAt}>{saved.toISOString().slice(0, 10)}</time>
-        , to run on Kotlin {state.snippet.kotlinVersion}. Edit it and save again to get a new
-        link — snippets are never overwritten.
+        , to run on Kotlin {state.snippet.kotlinVersion}. Edit it and save again to add another
+        entry — snippets are never overwritten.
       </p>
       <p className="kl-snippet-page__meta kl-snippet-page__local">
-        Stored in this browser, not on the server: this site has no snippet store, so the
-        link works on this device only, and clearing site data takes the snippet with it.
+        Stored in this browser, not on the server: this page works on this device only, and
+        clearing site data takes the snippet with it.
       </p>
 
       <Playground
