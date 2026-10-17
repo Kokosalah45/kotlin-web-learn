@@ -10,6 +10,7 @@ const meta: MetaRecord = {
   'function-types': {"title":"Function Types"},
   'extension-functions': {"title":"Extension Functions"},
   'scope-functions': {"title":"Scope Functions"},
+  'study-guide': {"title":"Study Guide"},
 }
 
 export default meta

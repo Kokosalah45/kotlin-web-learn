@@ -1,0 +1,592 @@
+---
+title: "Study Guide"
+description: "Self-test questions, a glossary, and the cross-cutting rules for the whole Functions section."
+---
+
+# Study Guide
+
+The reference pages in this section explain how each piece of Kotlin's function system
+works. This page is for checking that it stuck: a glossary of the terms those pages use
+without defining, 36 questions with hidden answers, and the three rules that cut across
+every page here.
+
+Answers are collapsed — read the question, decide, then open it.
+
+<Callout type="info">
+  Every code output quoted in an answer comes from the example file named on the page it
+  belongs to, executed by `pnpm examples:run`. Answers that reason about a case not shown on
+  a page are marked **[reasoned]** — they have not been run.
+</Callout>
+
+## The three rules worth memorising
+
+### 1. Compile time or runtime
+
+Four features look similar and split on this one line:
+
+| Feature | Resolved from |
+| :--- | :--- |
+| [Member functions](/functions/member-functions) | the **runtime** type — virtual dispatch |
+| [Extension functions](/functions/extension-functions) | the **declared** type — static dispatch |
+| [Default parameter values](/functions/standard-functions/parameters) | the statically known declaration |
+| [`inline` + `reified`](/functions/function-types/higher-order-functions) | substituted at the call site |
+
+Only the first consults the object you actually have. That is why you can model polymorphism
+with members and must not with extensions.
+
+### 2. Three meanings of a bare `return`
+
+| Where | What it does |
+| :--- | :--- |
+| lambda passed to an **inline** function | leaves the **whole enclosing function** |
+| lambda passed to a **non-inline** function | compile error — `'return' is prohibited here` |
+| inside an **anonymous function** | leaves only the anonymous function |
+
+A labelled `return@forEach` always means "this element only", everywhere.
+
+### 3. Inference follows the body shape
+
+A **block** body never infers its return type; a **single-expression** body does. The same
+rule governs anonymous functions. Four cases force an explicit type even with `=`:
+recursion, mutual recursion, a typeless expression like `= null`, and an expression body
+containing a `return`.
+
+## Glossary
+
+Terms the reference pages use without stopping to define, grouped by where they first bite.
+
+### Declarations
+
+| Term | Meaning |
+| :--- | :--- |
+| Block body | `fun f() { ... }` — uses `return`, never infers its type |
+| Single-expression body | `fun f() = expr` — return type inferred |
+| Pascal notation | Kotlin's `name: Type` order, same as TypeScript |
+| `Unit` | A real type with exactly one instance. Not `void` — you can store, print and compare it |
+| `Nothing` | The *bottom type*: no instances, subtype of everything. TypeScript's `never` |
+| `infix` | Call without dot or parentheses. Binds looser than arithmetic |
+| `vararg` | A parameter taking any number of arguments; inside the function it is an **array** |
+| Spread `*` | Expands an array into an argument list. Only works on arrays, and **copies** |
+| Boxing | Wrapping a primitive in an object. `Array<Int>` boxes; `IntArray` does not |
+
+### Scope and dispatch
+
+| Term | Meaning |
+| :--- | :--- |
+| Closure | The outer-scope variables a nested function or lambda can still see |
+| Shadowing | An inner declaration hiding an outer one of the same name |
+| Effectively final | Java's rule that a captured local is never reassigned. Kotlin has no such rule |
+| Virtual dispatch | Choosing the implementation from the **runtime** type |
+| Static dispatch | Resolving the call at compile time from the **declared** type |
+| `open` | Kotlin's opt-in to being overridable. Classes and members are `final` by default |
+| Companion object | Kotlin's replacement for `static`. One instance per class, and it can be extended |
+| Receiver | The object a function is called *on*; inside the body it is `this` |
+| Implicit receiver | A `this` that is in scope without being written |
+| Smart cast | The compiler narrowing a type after a check, so afterwards it is known non-null |
+| Backing field | The hidden storage behind a property. Extensions have none |
+
+### Functions as values
+
+| Term | Meaning |
+| :--- | :--- |
+| First-class function | A function usable as a value: stored, passed, returned |
+| Callable reference | `::isOdd`, `String::toInt`, or bound to an instance as `"kodee"::uppercase` |
+| `invoke` | The operator behind `f(x)`. Implement it and your class *is* a function |
+| `FunctionN` | What a function type actually is on the JVM — so every non-inlined lambda is an object |
+| Synthetic method | A method the compiler generates that you never wrote, e.g. `main$lambda$3` |
+| Type erasure | The JVM discarding generic type arguments at runtime |
+| `reified` | Substituting the real type at the call site so `is T` works. Requires `inline` |
+| `noinline` | Opt one lambda out of inlining — needed to store it or pass it on |
+| `crossinline` | Forbid non-local returns from a lambda the inline function calls from another context |
+| Object expression | Kotlin's anonymous class, `object : Runnable { ... }` |
+| Tail call | A recursive call that is the *final* operation, with nothing left to do after it |
+| Accumulator | A parameter carrying the running result down a recursion |
+| `Error` vs `Exception` | Both are `Throwable`. `StackOverflowError` is an `Error`, so `catch (e: Exception)` misses it |
+
+## Coming from JavaScript or TypeScript
+
+Six places your instincts transfer — and five where they will mislead you.
+
+| Your JS/TS instinct | In Kotlin |
+| :--- | :--- |
+| Default parameters evaluate per call | ✅ Same. It is *Python* that evaluates once at definition time |
+| Closures capture the variable, not the value | ✅ Same |
+| Loop variables in closures need `let` | ✅ Already fixed — a `for` variable is a fresh `val` per iteration |
+| TS infers every return type | ❌ Kotlin refuses for block bodies, deliberately |
+| `...arr` spreads any iterable, by reference | ❌ `*arr` works on arrays only, and passes a **copy** |
+| `return` in `forEach` skips one element | ❌ Unlabelled, it abandons the whole function. You want `return@forEach` |
+| Falsy values fall through `||` | ❌ `?:` fires only on `null`. `0.takeIf { it == 0 } ?: x` gives `0` |
+| Function declarations hoist | ❌ True for top-level and members, **false** for local functions |
+
+## Lesson 1 — [Declaring a function](/functions/standard-functions)
+
+**Q1.** Why won't this compile?
+
+```kotlin
+fun classify(n: Int) { if (n > 0) return "pos" else return "neg" }
+```
+
+<details>
+<summary>Answer</summary>
+
+Braces make it a block body, so the return type is never inferred — it defaults to `Unit`,
+and returning a `String` is an error. Add `: String` after the parentheses, or convert to a
+single expression: `fun classify(n: Int) = if (n > 0) "pos" else "neg"`. **[reasoned]**
+
+</details>
+
+**Q2.** `fun half(x: Int) = x / 2.0` — what is the inferred return type, and when is that a
+problem?
+
+<details>
+<summary>Answer</summary>
+
+`Double`. It is a problem when callers need a wider type such as `Number`; inference gives
+the narrowest type the expression produces, so widen it explicitly:
+`fun half(x: Int): Number = x / 2.0`.
+
+</details>
+
+**Q3.** Calling an `infix` member on the current instance needs something extra. What, and
+why?
+
+<details>
+<summary>Answer</summary>
+
+An explicit `this` — `this add "second"`. An infix call always needs both operands spelled
+out, so the receiver cannot be implicit.
+
+</details>
+
+**Q4.** Does `shout("x") === shout("y")` print `true` because the calls were optimised away?
+
+<details>
+<summary>Answer</summary>
+
+No. The page's output shows `X` and `Y` printed first, so both genuinely ran. It is `true`
+because `Unit` has exactly one instance and both calls returned it.
+
+</details>
+
+**Q5.** Predict the output:
+
+```kotlin
+fun traced(b: Int, print: Unit? = println("No argument passed for 'print'")) { println(b) }
+traced(1)
+traced(1, null)
+```
+
+<details>
+<summary>Answer</summary>
+
+```text
+No argument passed for 'print'
+1
+1
+```
+
+The default's side effect fires only on the call that omitted the argument. The second call
+supplied `null`, so the `println` never ran.
+
+</details>
+
+**Q6.** A colleague writes `fun load(path: String, config: Config = readConfigFromDisk())`.
+What is the hidden cost?
+
+<details>
+<summary>Answer</summary>
+
+`readConfigFromDisk()` runs on **every** call that omits `config` — not once. Defaults are
+lazy *and* re-evaluated per call. The signature looks free; it is not.
+
+</details>
+
+**Q7.** Why does `shape.draw()` print `rectangle 10x5` rather than an error, when `Rectangle`
+restates no defaults?
+
+<details>
+<summary>Answer</summary>
+
+`Rectangle` overrides the *behaviour* but inherits the *defaults* from `Shape`, and defaults
+resolve statically against `Shape.draw`. So `10` and `5` are supplied, then the override's
+body runs. An overriding method may not restate defaults at all.
+
+</details>
+
+**Q8.** You are calling a Java method with six boolean parameters. Can you name them for
+readability?
+
+<details>
+<summary>Answer</summary>
+
+No — named arguments do not work across the Java boundary, because JVM bytecode does not
+reliably preserve parameter names. Wrap it in a Kotlin function with named, defaulted
+parameters and call that.
+
+</details>
+
+**Q9.** `fun f(vararg xs: Int)` — does `f(*intArrayOf(1,2,3))` need `.toTypedArray()`?
+
+<details>
+<summary>Answer</summary>
+
+No. `vararg xs: Int` compiles to an `IntArray`, so an `IntArray` spreads straight in. You
+need `toTypedArray()` only for a generic or reference-typed `vararg`, where the parameter is
+an `Array<out T>`.
+
+</details>
+
+**Q10.** You have `val ids: List<Int>` and `fun log(vararg ids: Int)`. Cheapest fix, and the
+better design?
+
+<details>
+<summary>Answer</summary>
+
+Fix: `log(*ids.toIntArray())`. Better design: declare the parameter `Collection<Int>`. If
+callers usually already hold a collection, `vararg` just forces an allocation at every call
+site — and there is no `*someList` to avoid it.
+
+</details>
+
+**Q11.** Predict both outputs:
+
+```kotlin
+fun a() { listOf(1,2,3).forEach { if (it == 2) return@forEach; print(it) }; print("X") }
+fun b() { listOf(1,2,3).forEach { if (it == 2) return;          print(it) }; print("X") }
+```
+
+<details>
+<summary>Answer</summary>
+
+`a()` prints `13X`. `b()` prints `1` — the unlabelled `return` exits `b` entirely, so
+`print("X")` never runs. **[reasoned]**
+
+</details>
+
+**Q12.** Why does a bare `return` inside a lambda compile for `forEach` but not for a
+function you wrote yourself?
+
+<details>
+<summary>Answer</summary>
+
+`forEach` is `inline`. The lambda body is substituted into the call site, so the `return` is
+physically inside the outer function. A non-inline function receives a real function object,
+whose `return` cannot reach an outer frame — the compiler rejects it with
+`'return' is prohibited here`.
+
+</details>
+
+**Q13.** Name three ways to get "return from this lambda only".
+
+<details>
+<summary>Answer</summary>
+
+1. The implicit label — `return@forEach`.
+2. An explicit label — `forEach lit@{ ... return@lit }`.
+3. An [anonymous function](/functions/function-types/anonymous-functions) instead of a
+   lambda, where a bare `return` returns from the anonymous function itself.
+
+</details>
+
+## Lesson 2 — [Local functions](/functions/local-functions)
+
+**Q14.** Why doesn't this compile, and what is the minimal fix?
+
+```kotlin
+fun process() {
+    fun isEven(n: Int) = n % 2 == 0
+    fun classify(n: Int) = if (isOdd(n)) "odd" else "even"
+    fun isOdd(n: Int) = !isEven(n)
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`classify` calls `isOdd` before it is declared. Local declarations are visible only from
+their declaration onwards, so move `isOdd` above `classify`. If the two genuinely had to be
+mutually recursive, one would have to become a top-level or member function — two local
+functions cannot be. **[reasoned]**
+
+</details>
+
+**Q15.** You profile a hot loop and find a local helper is the bottleneck. Why can't you just
+add `inline`?
+
+<details>
+<summary>Answer</summary>
+
+kotlinc rejects it: `local inline functions are not yet supported`. That is an
+implementation gap rather than a rule. Hoist it to a top-level `private inline fun` — which
+also means passing in whatever it was reading from the closure.
+
+</details>
+
+## Lesson 3 — [Member functions](/functions/member-functions)
+
+**Q16.** `greetTwice()` is not `open` and is never overridden. Why does it print different
+text per instance?
+
+<details>
+<summary>Answer</summary>
+
+It calls `greet()`, which *is* `open` and *is* overridden. That inner call is dispatched
+virtually on the runtime type, so `LoudGreeter`'s body runs even though the call site sits
+in `Greeter`.
+
+</details>
+
+**Q17.** You upgrade a library. Tests change behaviour, but nothing failed to compile. Prime
+suspect?
+
+<details>
+<summary>Answer</summary>
+
+An extension of yours is now shadowed by a new **member** of the same name on the library
+type — members always win. Grep the build log for
+`this extension is shadowed by a member`. It is only a warning, and it appears on your
+extension's declaration, not at the call sites that changed.
+
+</details>
+
+**Q18.** Why are Kotlin classes `final` by default?
+
+<details>
+<summary>Answer</summary>
+
+Inheritance is a commitment: once a class is `open`, subclasses can change behaviour its own
+members rely on. Requiring `open` on both the class and the member makes extensibility a
+deliberate decision rather than an accident. This is the reverse of Java's default.
+
+</details>
+
+## Lesson 4 — [Tail-recursive functions](/functions/tail-recursive-functions)
+
+**Q19.** Is `tailrec` a hint, like C's `inline`?
+
+<details>
+<summary>Answer</summary>
+
+No. Either the conditions hold and you get a loop, or the compiler warns and you get
+ordinary recursion. It never silently "tries".
+
+</details>
+
+**Q20.** Rewrite as tail-recursive:
+
+```kotlin
+fun sumList(xs: List<Int>): Int = if (xs.isEmpty()) 0 else xs.first() + sumList(xs.drop(1))
+```
+
+<details>
+<summary>Answer</summary>
+
+The addition happens *after* the call returns, so it is not a tail call. Carry the result in
+an accumulator:
+
+```kotlin
+tailrec fun sumList(xs: List<Int>, acc: Int = 0): Int =
+    if (xs.isEmpty()) acc else sumList(xs.drop(1), acc + xs.first())
+```
+
+**[reasoned]**
+
+</details>
+
+**Q21.** Someone wraps a working `tailrec` function's body in `try { ... } finally { }` to
+add logging. What happens?
+
+<details>
+<summary>Answer</summary>
+
+It still compiles and runs — with
+`warning: tail recursion optimization inside try/catch/finally is not supported`. The
+optimisation is silently gone and it will `StackOverflowError` at depth. An empty `finally`
+changes nothing; the restriction is syntactic. Everything except `open` is only a warning,
+which is how this reaches production looking optimised.
+
+</details>
+
+## Lesson 5 — [Function types](/functions/function-types)
+
+**Q22.** What is the difference between `(Int) -> (Int) -> Int` and `((Int) -> Int) -> Int`?
+
+<details>
+<summary>Answer</summary>
+
+The first takes an `Int` and **returns** a function (currying). The second **takes** a
+function and returns an `Int`. The arrow is right-associative, so parentheses on the left are
+what make a parameter a function.
+
+</details>
+
+**Q23.** Why can you assign a `String.(Int) -> String` to a `(String, Int) -> String`?
+
+<details>
+<summary>Answer</summary>
+
+A receiver has no runtime representation — both are `Function2<String, Int, String>`. The
+receiver form is purely a compile-time convenience that puts the first argument in `this`.
+
+</details>
+
+**Q24.** How do you make your own class usable as a function?
+
+<details>
+<summary>Answer</summary>
+
+`override operator fun invoke(...)`, or implement the function type as an interface:
+`class IntTransformer : (Int) -> Int`. `f(x)` is sugar for `f.invoke(x)`.
+
+</details>
+
+## Lesson 6 — [Higher-order functions and `inline`](/functions/function-types/higher-order-functions)
+
+**Q25.** When is `inline` a bad idea?
+
+<details>
+<summary>Answer</summary>
+
+On a large body — it is copied into *every* call site — or on a function with no
+function-typed parameters and no `reified`, where it buys nothing. The compiler warns about
+the second case: `expected performance impact from inlining is insignificant`.
+
+</details>
+
+**Q26.** You inline a function and store its lambda in a field. The compiler objects. Fix?
+
+<details>
+<summary>Answer</summary>
+
+Mark that parameter `noinline`. An inlined lambda has no object to store — its body was
+pasted into the call site.
+
+</details>
+
+**Q27.** Why does `reified` require `inline`?
+
+<details>
+<summary>Answer</summary>
+
+It works by substituting the actual type argument into the body at each call site. Without
+inlining there is no call site to substitute into, and type erasure leaves nothing to
+inspect at runtime.
+
+</details>
+
+## Lesson 7 — [Lambdas and anonymous functions](/functions/function-types/lambda-functions)
+
+**Q28.** `{ (key, value) -> ... }` — how many parameters is that?
+
+<details>
+<summary>Answer</summary>
+
+**One**, being destructured. That is exactly why it works with `Map.forEach`, which passes a
+single `Map.Entry`.
+
+</details>
+
+**Q29.** Predict:
+
+```kotlin
+var factor = 2
+val scale = { n: Int -> n * factor }
+factor = 10
+println(scale(5))
+```
+
+<details>
+<summary>Answer</summary>
+
+`50`. A lambda captures the **variable**, not its value at creation time. **[reasoned]**
+
+</details>
+
+## Lesson 8 — [Extension functions](/functions/extension-functions)
+
+**Q30.** Why does `printShapeName(Rectangle2())` print `Shape2`?
+
+<details>
+<summary>Answer</summary>
+
+`printShapeName` declares its parameter as `Shape2`. Extensions dispatch on the **declared**
+type, resolved at compile time, so `Shape2.getName()` is chosen and the runtime type is
+never consulted.
+
+</details>
+
+**Q31.** You want a cached `id` on a third-party class via an extension property. Why can't
+you?
+
+<details>
+<summary>Answer</summary>
+
+No backing field — nothing was added to the class, so an extension property cannot have an
+initialiser. You must write the accessors and hold the state yourself, for example in a
+`mutableMapOf<TheirType, Int>()` the getter and setter consult.
+
+</details>
+
+**Q32.** Your extension needs the receiver's `private` field. Options?
+
+<details>
+<summary>Answer</summary>
+
+None via an extension — it has the access rights of the scope it is *declared* in, not of the
+receiver, so it sees only the public API. Either the class exposes it, or the function
+belongs as a member, or you use reflection and accept the cost.
+
+</details>
+
+## Lesson 9 — [Scope functions](/functions/scope-functions)
+
+**Q33.** `val n = list.apply { size }` — what is `n`?
+
+<details>
+<summary>Answer</summary>
+
+The list. `apply` returns the **context object**, not the block's result — and the compiler
+will not complain if `n` is used somewhere an object is acceptable. You wanted `run` or
+`let`.
+
+</details>
+
+**Q34.** Why does `absent?.let { it.length }` evaluate to `null` rather than throwing?
+
+<details>
+<summary>Answer</summary>
+
+`?.` short-circuits *before* `let` is called, so the lambda never runs and the whole
+expression is `null`.
+
+</details>
+
+**Q35.** You are inside a class method and want to configure an object *and* still reach the
+class's own `this`. `apply` or `also`?
+
+<details>
+<summary>Answer</summary>
+
+`also`. Inside `apply` the object becomes `this` and the class's `this` needs
+`this@ClassName`; inside `also` the object is `it` and `this` keeps its outer meaning. That
+is largely why `also` exists.
+
+</details>
+
+**Q36.** Predict: `println(emptyList<Int>().takeIf { it.isEmpty() } ?: "fallback")`
+
+<details>
+<summary>Answer</summary>
+
+`[]`. The predicate was `true`, so `takeIf` returned the list — empty or not — and `?:`
+fires only on `null`. This is the opposite of JavaScript truthiness. **[reasoned]**
+
+</details>
+
+## Related
+
+- [Functions overview](/functions) — every page in this section
+- [Collection Operations](/collection-operations) — where most higher-order functions get used
+- [Null Safety](/null-safety) — `?.let` and the Elvis operator in context
+
+import { Callout } from 'nextra/components'

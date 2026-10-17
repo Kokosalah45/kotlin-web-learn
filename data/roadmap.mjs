@@ -177,6 +177,12 @@ export const sections = [
       },
       { slug: 'extension-functions', title: 'Extension Functions', docs: ['extensions'] },
       { slug: 'scope-functions', title: 'Scope Functions', docs: ['scope-functions'], extra: true },
+      {
+        slug: 'study-guide',
+        title: 'Study Guide',
+        docs: ['functions', 'lambdas', 'extensions', 'scope-functions'],
+        extra: true,
+      },
     ],
   },
   {
