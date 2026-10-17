@@ -13,7 +13,9 @@ const meta: MetaRecord = {
   'packages-and-ecosystem': {"title":"Packages & Ecosystem"},
   'kotlin-platforms': {"title":"Kotlin Platforms"},
   'kotlin-applications': {"title":"Kotlin Applications"},
-  playground: { title: 'Playground' },
+  // `layout: 'full'` drops the table-of-contents column so the editor gets
+  // the whole content width; the page is short enough not to need the TOC.
+  playground: { title: 'Playground', theme: { layout: 'full', toc: false } },
   attribution: { title: 'Attribution' },
 }
 

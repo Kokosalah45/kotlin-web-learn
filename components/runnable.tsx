@@ -17,6 +17,8 @@ type Props = {
   version?: string
   saveable?: boolean
   label?: string
+  /** Passed through to `<Playground>`; see its `size` prop. */
+  size?: 'inline' | 'tall'
 }
 
 const EXAMPLES_DIR = 'examples'
@@ -54,7 +56,8 @@ export async function Runnable({
   code,
   version = DEFAULT_KOTLIN_VERSION,
   saveable = true,
-  label
+  label,
+  size = 'inline'
 }: Props) {
   if (!src && code === undefined) {
     throw new Error('<Runnable> needs either a `src` or a `code` prop.')
@@ -68,6 +71,7 @@ export async function Runnable({
       version={version}
       saveable={saveable}
       label={label ?? (src ? `examples/${src}` : undefined)}
+      size={size}
     />
   )
 }

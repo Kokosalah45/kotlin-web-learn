@@ -7,6 +7,7 @@ import { getPageMap } from 'nextra/page-map'
 import 'nextra-theme-docs/style.css'
 import './globals.css'
 import { Logo } from '@/components/logo'
+import { PlaygroundDock } from '@/components/playground-dock'
 
 export const metadata: Metadata = {
   title: {
@@ -20,6 +21,11 @@ export const metadata: Metadata = {
 
 const navbar = (
   <Navbar logo={<Logo />} projectLink="https://github.com/JetBrains/kotlin">
+    {/* The one call to action in the chrome: an editor is a page away from
+        anywhere on the site. The dock below opens the same thing in place. */}
+    <Link href="/playground" className="kl-nav-cta">
+      <span aria-hidden="true">▶</span> Playground
+    </Link>
     <a
       href="https://kotlinlang.org/docs/home.html"
       target="_blank"
@@ -64,6 +70,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         >
           {children}
         </Layout>
+        <PlaygroundDock />
       </body>
     </html>
   )

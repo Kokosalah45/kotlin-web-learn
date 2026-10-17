@@ -13,6 +13,20 @@ type Props = {
   saveable?: boolean
   /** Shown above the editor. */
   label?: string
+  /**
+   * `inline` sizes the editor to its contents, which is what a short excerpt on
+   * a concept page wants. `tall` gives it a large fixed working area instead,
+   * for the places where the editor *is* the page: /playground, a saved
+   * snippet, and the dock.
+   */
+  size?: 'inline' | 'tall'
+  /**
+   * Called with the editor's contents as they change, for a caller that has to
+   * keep them somewhere — the dock, which writes them to `sessionStorage`.
+   * Inherits kotlin-playground's 500ms debounce, so it is a few keystrokes
+   * behind the screen.
+   */
+  onCodeChange?: (code: string) => void
 }
 
 type Share = { id: string; url: string }
@@ -44,10 +58,22 @@ export function Playground({
   code,
   version = DEFAULT_KOTLIN_VERSION,
   saveable = true,
-  label
+  label,
+  size = 'inline',
+  onCodeChange
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const fragmentRef = useRef<PlaygroundFragment | null>(null)
+
+  /**
+   * Held in a ref so the mounting effect below does not have to list the
+   * callback as a dependency: a caller that passes an inline arrow function
+   * would otherwise tear the editor down and rebuild it on every render.
+   */
+  const onCodeChangeRef = useRef(onCodeChange)
+  useEffect(() => {
+    onCodeChangeRef.current = onCodeChange
+  })
 
   /**
    * The contents to mount with. Re-read from the editor before a theme change
@@ -113,12 +139,14 @@ export function Playground({
           getInstance: (fragment) => {
             fragmentRef.current = fragment
           },
-          // Debounced 500ms upstream. Used only to retire a share link that no
-          // longer matches what is on screen; the code itself is read with
+          // Debounced 500ms upstream. Used to retire a share link that no
+          // longer matches what is on screen, and to report the contents to a
+          // caller that keeps them. The code saved to a share link is read with
           // getCode() at save time, so the debounce cannot truncate a save.
-          onChange: () => {
+          onChange: (current) => {
             setShare(null)
             setSaveError(null)
+            onCodeChangeRef.current?.(current)
           }
         })
       )
@@ -196,7 +224,7 @@ export function Playground({
   }, [shareUrl])
 
   return (
-    <div className="kl-playground">
+    <div className={size === 'tall' ? 'kl-playground kl-playground--tall' : 'kl-playground'}>
       <div className="kl-playground__bar">
         <span className="kl-playground__label">
           {label ?? 'Runnable'}

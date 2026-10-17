@@ -122,6 +122,37 @@ There is also a `code` prop for literal source, used by `/playground` and `/p/[i
 `src`: `code` is a JSX expression, so Kotlin's `${...}` string templates in it would be read
 as JavaScript interpolation, and nothing compiles it in CI.
 
+`size="tall"` gives the editor a fixed working area (`min(60vh, 34rem)`, and `min(52vh,
+30rem)` inside the dock, which has its own chrome to fit) instead of sizing it to the
+snippet. Used where the editor is the point of the page — `/playground`, `/p/[id]` and the
+dock — while inline samples keep growing with their code.
+
+### Reaching it from anywhere
+
+Two entry points sit outside the content, so running Kotlin is never more than one click
+away:
+
+- **Playground** in the navbar, which goes to `/playground` (hidden under 48rem, where the
+  navbar has no room for it).
+- **Run Kotlin**, the button in the bottom-right corner of every page, which opens
+  `components/playground-dock.tsx` — the same editor in a panel over the current page. It is
+  suppressed on `/playground` and `/p/[id]`, which already show one.
+- **Alt+R** (Option+R on macOS), which toggles the dock from anywhere, including the pages
+  that hide the launcher. Matched on `event.code === 'KeyR'`, since Option+R on macOS
+  produces `®`; Ctrl/Cmd+K was not available, as the theme's search owns it.
+
+The dock renders nothing until its first open, so a reader who never asks for it never
+downloads the `kotlin-playground` bundle or calls `api.kotlinlang.org`. After that it stays
+mounted and hidden, keeping the code and the last output across closing and across page
+navigation.
+
+A reload drops the mounted editor, so `<Playground onCodeChange>` — kotlin-playground's own
+`onChange`, debounced 500ms upstream — writes the contents to `sessionStorage` under
+`kl:playground-dock`, and the dock reads them back in an effect on mount (not during
+render: the server has no `sessionStorage`). `sessionStorage` rather than `localStorage`, so
+a scratch snippet dies with the tab. Reloading within 500ms of the last keystroke loses
+those keystrokes.
+
 The editor requests **Kotlin 2.4.21** — the version every recorded output was produced with,
 and currently `latestStable` per `GET https://api.kotlinlang.org/versions`. If the server
 stops offering it the component falls back to whatever is `latestStable`, and a saved
@@ -197,7 +228,7 @@ content/              one .mdx per roadmap node, mirroring the category tree
 data/roadmap.mjs      the 153-node manifest: titles, doc slugs, API paths
 examples/             runnable Kotlin backing the output blocks
 scripts/              scaffold, link verification, docs fetch, example runner
-components/           DocSource, Runnable + Playground (the editor), Logo
+components/           DocSource, Runnable + Playground (the editor), the dock, Logo
 lib/                  snippet store and the shared Kotlin constants
 types/                hand-written declarations for kotlin-playground, which ships none
 .content-cache/       fetched official Markdown (gitignored)

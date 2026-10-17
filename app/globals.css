@@ -150,6 +150,31 @@
   height: auto;
 }
 
+/* A dedicated playground: the editor is the page, so give it a real working
+   area instead of letting it shrink to whatever the starter snippet happens to
+   be. `min-height` rather than `height` keeps kotlin-playground's own
+   behaviour of growing with the code; it is set on `.CodeMirror-scroll` as
+   well because that is the element the editor hit-tests clicks against, so
+   without it a click in the empty space below the last line would land outside
+   the editor and not place the caret. */
+.kl-playground--tall {
+  --kl-playground-min-height: min(60vh, 34rem);
+}
+
+.kl-playground--tall .kl-playground__host .CodeMirror,
+.kl-playground--tall .kl-playground__host .CodeMirror-scroll {
+  min-height: var(--kl-playground-min-height);
+}
+
+.kl-playground--tall .kl-playground__bar {
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8125rem;
+}
+
+.kl-playground--tall .kl-playground__host .CodeMirror {
+  font-size: 0.9375rem;
+}
+
 /* Saved-snippet page, which renders outside the MDX pipeline. */
 .kl-snippet-page {
   max-width: 54rem;
@@ -172,4 +197,235 @@
 
 .kl-snippet-page__meta a {
   text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------------
+   Getting to the playground.
+
+   Two entry points, both on every page: a call to action in the navbar that
+   goes to /playground, and the dock, which opens an editor over whatever the
+   reader is already reading. `.kl-nav-cta` is a plain element inside Nextra's
+   navbar, so it is styled here rather than with the theme's `x:` utilities.
+   --------------------------------------------------------------------------- */
+.kl-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.4rem;
+  background: #7472e2;
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.kl-nav-cta:hover {
+  background: #605ed8;
+}
+
+.kl-nav-cta span {
+  font-size: 0.7em;
+}
+
+/* Below the theme's mobile breakpoint the navbar also has to hold the logo,
+   the search box and the hamburger, and the floating launcher is the better
+   call to action on a phone anyway. */
+@media (max-width: 48rem) {
+  .kl-nav-cta {
+    display: none;
+  }
+}
+
+/* The launcher. Offset from the corner so it clears the theme's "back to top"
+   control, and pushed above the footer's reading area on narrow screens. */
+.kl-dock-launcher {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid color-mix(in srgb, #fff 25%, transparent);
+  border-radius: 999px;
+  background: #7472e2;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.28);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.kl-dock-launcher:hover {
+  background: #605ed8;
+  transform: translateY(-1px);
+}
+
+.kl-dock-launcher[data-dock-open='true'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kl-dock-launcher__glyph {
+  font-size: 0.7em;
+}
+
+.kl-dock-launcher__kbd {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+  background: rgb(255 255 255 / 0.18);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75em;
+}
+
+/* The shortcut hint is for a reader with a keyboard; a touch device has none
+   to press, and the pill is tight enough on a phone as it is. */
+@media (pointer: coarse) {
+  .kl-dock-launcher__kbd {
+    display: none;
+  }
+}
+
+@media print {
+  .kl-dock-launcher,
+  .kl-dock {
+    display: none;
+  }
+}
+
+/* The dock itself. Closed, it is hidden but still laid out — see the comment
+   in components/playground-dock.tsx for why it is not `display: none`. */
+.kl-dock {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.kl-dock[data-open='false'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.kl-dock__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.45);
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.kl-dock[data-open='false'] .kl-dock__scrim {
+  opacity: 0;
+}
+
+.kl-dock__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(68rem, 100%);
+  max-height: min(88vh, 54rem);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-bottom: none;
+  border-radius: 0.9rem 0.9rem 0 0;
+  background: rgb(var(--nextra-bg));
+  box-shadow: 0 -12px 40px rgb(0 0 0 / 0.35);
+  transition: transform 0.22s ease;
+}
+
+.kl-dock[data-open='false'] .kl-dock__panel {
+  transform: translateY(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kl-dock__panel,
+  .kl-dock__scrim,
+  .kl-dock-launcher {
+    transition: none;
+  }
+}
+
+.kl-dock__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.kl-dock__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-right: auto;
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.kl-dock__hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.kl-dock__link,
+.kl-dock__close {
+  flex: none;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kl-dock__link:hover,
+.kl-dock__close:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* The editor scrolls inside the panel rather than growing past its bottom
+   edge, which it would do as soon as a run opened the output pane. */
+.kl-dock__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 1rem 1rem;
+}
+
+/* Inside the dock the frame is the panel, so the editor drops its own. */
+.kl-dock__body .kl-playground {
+  margin: 1rem 0 0;
+}
+
+.kl-dock__body .kl-playground--tall {
+  --kl-playground-min-height: min(52vh, 30rem);
+}
+
+@media (max-width: 40rem) {
+  .kl-dock-launcher {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    padding: 0.55rem 0.9rem;
+  }
+
+  .kl-dock__panel {
+    max-height: 92vh;
+  }
 }

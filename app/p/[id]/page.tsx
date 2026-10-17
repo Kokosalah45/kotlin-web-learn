@@ -54,6 +54,7 @@ export default async function SavedSnippetPage({ params }: PageProps) {
         code={snippet.code}
         version={snippet.kotlinVersion}
         label={`Snippet ${id}`}
+        size="tall"
       />
 
       <p className="kl-snippet-page__meta">
