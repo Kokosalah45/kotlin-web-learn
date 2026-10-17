@@ -61,6 +61,31 @@ fun whereAmI(label: String) {
     println("$label -> ${frame.className.substringAfterLast('.')}.${frame.methodName}")
 }
 
+
+// --- noinline: an inlined lambda has no object, so it cannot be stored ---
+
+// `storeOne` is public and inline, so everything it touches must be public API
+// too. @PublishedApi is the documented escape hatch for an internal declaration.
+@PublishedApi
+internal var stored: (() -> Unit)? = null
+
+// `inlined` is pasted into the call site; `notInlined` stays a real object we can keep.
+inline fun storeOne(inlined: () -> Unit, noinline notInlined: () -> Unit) {
+    inlined()
+    stored = notInlined
+}
+
+// --- Inline properties: only legal on accessors with no backing field ---
+
+class Config(@PublishedApi internal val raw: Map<String, String>) {
+    // Whole property inlined: both accessors.
+    inline val isEmpty: Boolean get() = size == 0
+
+    // A single accessor inlined.
+    val size: Int
+        inline get() = raw.size
+}
+
 fun main() {
     println("== fold, written out ==")
     val items = listOf(1, 2, 3, 4, 5)
@@ -101,4 +126,15 @@ fun main() {
     println(countOf<String>(mixed))
     println(countOf<Int>(mixed))
     println(typeNameOf<StringBuilder>())
+
+    println("== noinline lets a lambda outlive the call ==")
+    storeOne({ println("  inlined body runs immediately") }, { println("  stored body runs later") })
+    println("  stored is null? ${stored == null}")
+    stored?.invoke()
+
+    println("== inline properties ==")
+    val config = Config(mapOf("a" to "1", "b" to "2"))
+    println(config.size)
+    println(config.isEmpty)
+    println(Config(emptyMap()).isEmpty)
 }

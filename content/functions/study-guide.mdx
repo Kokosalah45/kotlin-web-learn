@@ -7,7 +7,7 @@ description: "Self-test questions, a glossary, and the cross-cutting rules for t
 
 The reference pages in this section explain how each piece of Kotlin's function system
 works. This page is for checking that it stuck: a glossary of the terms those pages use
-without defining, 36 questions with hidden answers, and the three rules that cut across
+without defining, 40 questions with hidden answers, and the three rules that cut across
 every page here.
 
 Answers are collapsed — read the question, decide, then open it.
@@ -98,6 +98,9 @@ Terms the reference pages use without stopping to define, grouped by where they 
 | `reified` | Substituting the real type at the call site so `is T` works. Requires `inline` |
 | `noinline` | Opt one lambda out of inlining — needed to store it or pass it on |
 | `crossinline` | Forbid non-local returns from a lambda the inline function calls from another context |
+| Function literal with receiver | The official name for a lambda whose `this` is a receiver object — `Int.(Int) -> Int` |
+| Inline property | `inline get()` / `inline set()`. Only legal with **no backing field** |
+| `@PublishedApi` | Marks an `internal` declaration usable from public-API inline code |
 | Object expression | Kotlin's anonymous class, `object : Runnable { ... }` |
 | Tail call | A recursive call that is the *final* operation, with nothing left to do after it |
 | Accumulator | A parameter carrying the running result down a recursion |
@@ -474,7 +477,77 @@ inspect at runtime.
 
 </details>
 
+**Q27a.** You mark a public `inline fun` and it reads a `private` top-level value. What
+happens, and what are the two fixes?
+
+<details>
+<summary>Answer</summary>
+
+```text
+error: public-API inline function cannot access non-public-API property.
+```
+
+A public inline function is inlined into *other modules'* compiled output, so its body may
+only touch public API — otherwise changing a private detail silently breaks callers that
+were never recompiled. Fix it by making the declaration public, or by marking it
+`internal` plus `@PublishedApi`.
+
+</details>
+
+**Q27b.** Why does this fail?
+
+```kotlin
+var bar: String = "x"
+    inline set(v) { field = v }
+```
+
+<details>
+<summary>Answer</summary>
+
+```text
+error: inline property cannot have a backing field.
+```
+
+Inlining pastes the accessor body into the caller, and `field` exists only inside the
+class. Inline accessors are therefore restricted to properties with no backing field —
+computed ones like `inline val isEmpty get() = size == 0`.
+
+</details>
+
+**Q27c.** You pass two lambdas to an `inline fun` and try to store one in a field. One
+works, one doesn't. Why?
+
+<details>
+<summary>Answer</summary>
+
+An inlined lambda has no object — its body was pasted into the call site — so there is
+nothing to store. Inlinable lambdas may only be called inside the inline function or passed
+on as inlinable arguments. Mark the one you need to keep `noinline` and it becomes an
+ordinary function object you can hold.
+
+</details>
+
 ## Lesson 7 — [Lambdas and anonymous functions](/functions/function-types/lambda-functions)
+
+**Q27d.** What is a "function literal with receiver", and what are the two ways to write
+one?
+
+<details>
+<summary>Answer</summary>
+
+A lambda or anonymous function whose `this` is a receiver object, so the receiver's members
+are in scope unqualified — the mechanism behind `apply`, `run`, `with` and every type-safe
+builder. Two forms:
+
+```kotlin
+val plus: Int.(Int) -> Int = { other -> plus(other) }   // lambda, receiver inferred from the type
+val sum = fun Int.(other: Int): Int = this + other      // anonymous function, receiver named directly
+```
+
+Use the second when the receiver type is not inferable from context, or when you want the
+receiver and return type stated in one place.
+
+</details>
 
 **Q28.** `{ (key, value) -> ... }` — how many parameters is that?
 

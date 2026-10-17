@@ -202,8 +202,12 @@ second
 
 ## Lambdas with a receiver
 
-Given a [function type with a receiver](/functions/function-types), a lambda's `this` is
-the receiver object, so its members are in scope unqualified:
+Also called **function literals with receiver**, which is the term the official docs use.
+
+Given a [function type with a receiver](/functions/function-types), the receiver object
+passed to a call becomes an **implicit `this`** inside the body, so its members are in scope
+with no qualifier — the same thing an
+[extension function](/functions/extension-functions) does:
 
 ```kotlin
 val plus: Int.(Int) -> Int = { other -> plus(other) }
@@ -213,6 +217,19 @@ println(2.plus(3))
 ```text
 5
 ```
+
+A lambda can be a function literal with receiver whenever the receiver type is inferable
+from context — here, from the declared type of `plus`. When it is not inferable, or you want
+the receiver and return type stated in one place, use the
+[anonymous function](/functions/function-types/anonymous-functions) form, which names the
+receiver directly:
+
+```kotlin
+val sum = fun Int.(other: Int): Int = this + other
+```
+
+That is the same type, `Int.(Int) -> Int`, written without needing an annotation on the
+variable.
 
 That is the whole mechanism behind type-safe builders: the function creates the receiver,
 then calls the lambda on it:

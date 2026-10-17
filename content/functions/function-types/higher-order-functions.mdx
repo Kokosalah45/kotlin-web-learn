@@ -128,11 +128,47 @@ frame of its own at all — its body was compiled directly into `main`.
   That warning is the signal you reached for `inline` out of habit.
 </Callout>
 
-Mark a parameter `noinline` to opt one lambda out, which you must do if you need to store
-it in a field or pass it on to a non-inline function. Mark it `crossinline` when the inline
-function calls it from another context (inside an object expression or a nested function) —
-that forbids non-local returns from it, which is exactly what the other context cannot
-support.
+### noinline
+
+An inlined lambda has no object — its body was pasted into the call site — so there is
+nothing to store or hand on. The rule is: **inlinable lambdas can only be called inside the
+inline function, or passed as an inlinable argument to another inline function.** Anything
+else needs `noinline`, and a `noinline` lambda can then be manipulated freely, including
+being stored in a field:
+
+```kotlin
+@PublishedApi
+internal var stored: (() -> Unit)? = null
+
+inline fun storeOne(inlined: () -> Unit, noinline notInlined: () -> Unit) {
+    inlined()
+    stored = notInlined   // only legal because of `noinline`
+}
+
+storeOne({ println("  inlined body runs immediately") }, { println("  stored body runs later") })
+println("  stored is null? ${stored == null}")
+stored?.invoke()
+```
+
+```text
+  inlined body runs immediately
+  stored is null? false
+  stored body runs later
+```
+
+Both lambdas were written at the same call site; only the `noinline` one still existed
+afterwards.
+
+### crossinline
+
+Use `crossinline` when the inline function calls the lambda from **another context** — inside
+an object expression or a nested function. That forbids non-local returns from it, which is
+precisely what the other context cannot support.
+
+<Callout type="info">
+  `@Suppress("NOTHING_TO_INLINE")` silences the "insignificant impact" warning when you are
+  sure the inlining is wanted anyway.
+</Callout>
 
 ## Non-local return
 
@@ -216,6 +252,87 @@ StringBuilder
 `reified` is only available on `inline` functions — a normal function has no call site to
 substitute the type into. A type with no runtime representation, such as `Nothing` or a
 non-reified type parameter, cannot be passed for a `reified` parameter.
+
+## Inline properties
+
+`inline` also works on **property accessors** — but only those with no
+[backing field](/classes-and-objects/class-members/properties). Annotate one accessor, or
+the whole property to inline both:
+
+```kotlin
+class Config(@PublishedApi internal val raw: Map<String, String>) {
+    inline val isEmpty: Boolean get() = size == 0   // whole property
+
+    val size: Int
+        inline get() = raw.size                     // one accessor
+}
+
+val config = Config(mapOf("a" to "1", "b" to "2"))
+println(config.size)
+println(config.isEmpty)
+println(Config(emptyMap()).isEmpty)
+```
+
+```text
+2
+false
+true
+```
+
+At the call site an inline accessor is inlined exactly like an inline function.
+
+<Callout type="warning">
+  A property with a backing field cannot be inlined at all. This:
+
+  ```kotlin
+  var bar: String = "x"
+      inline set(v) { field = v }
+  ```
+
+  fails with:
+
+  ```text
+  error: inline property cannot have a backing field.
+  ```
+
+  The reason is the same as everywhere else on this page: inlining pastes the accessor body
+  into the caller, and `field` only exists inside the class.
+</Callout>
+
+## Public API inline functions
+
+An inline function that is `public` or `protected`, and not inside a `private` or
+`internal` declaration, is part of the module's **public API**. Other modules call it *and
+inline it at their own call sites* — which means its body is baked into their compiled
+output.
+
+That creates a binary-compatibility risk: change the body, and any module that is not
+recompiled keeps running the old one. To contain it, Kotlin forbids public-API inline
+functions from touching **non-public-API declarations** — anything `private` or `internal`:
+
+```kotlin
+private val secret = 42
+inline fun leak(): Int = secret
+```
+
+```text
+error: public-API inline function cannot access non-public-API property.
+```
+
+The escape hatch is `@PublishedApi`, which marks an `internal` declaration as usable from
+public-API inline code — the `Config` and `stored` examples above both need it:
+
+```kotlin
+@PublishedApi
+internal var stored: (() -> Unit)? = null
+```
+
+<Callout type="info">
+  `@PublishedApi` is a promise, not a loophole. The declaration is now effectively public
+  for compatibility purposes — changing it can break callers that have already inlined it —
+  and when an `internal` **inline** function is marked `@PublishedApi`, its body is checked
+  as if it were public too.
+</Callout>
 
 ## Related
 
