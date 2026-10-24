@@ -61,10 +61,11 @@ const hasOwnPlayground = (pathname: string) =>
  * `kotlin-playground` bundle (it is a dynamic import inside `<Playground>`) and
  * never hits `api.kotlinlang.org` for the version list.
  *
- * It is a drawer, not a dialog: there is no backdrop, the page behind it keeps
- * its scrolling and its clicks, and it is anchored to one corner rather than
- * spread across the viewport. Reading on and running code are meant to happen
- * at the same time, so the editor must not be something to dismiss first.
+ * It is a drawer, not a dialog: full height against the right edge, with no
+ * backdrop, and the page beside it keeps its scrolling and its clicks.
+ * Reading on and running code are meant to happen at the same time, so the
+ * editor must not be something to dismiss first. On a phone there is no column
+ * to spare, so it takes the screen while it is open.
  *
  * After that first open the panel stays mounted and is hidden with
  * `visibility`, not `display: none`, so that whatever the reader typed — and
@@ -235,7 +236,9 @@ export function PlaygroundDock() {
               />
               <aside className="kl-dock__saved">
                 <h2 className="kl-dock__saved-heading">
-                  Saved
+                  {/* The space is explicit: flex `gap` separates these visually,
+                      but a screen reader reads the text nodes as written. */}
+                  Saved{' '}
                   <span className="kl-dock__hint">in this browser</span>
                 </h2>
                 <SavedSnippets onOpen={openSaved} revision={listRevision} />

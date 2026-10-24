@@ -136,9 +136,10 @@ away:
   navbar has no room for it).
 - **Run Kotlin**, the button in the bottom-right corner of every page, which opens
   `components/playground-dock.tsx` — the same editor, plus the list of saved snippets, in a
-  drawer in the corner of the current page. It is a drawer and not a dialog: no backdrop, no
-  scroll lock, nothing `inert`, so the page it sits over stays readable and clickable while
-  it is open. It is suppressed on `/playground` and `/p/[id]`, which already show an editor.
+  full-height drawer against the right edge. It is a drawer and not a dialog: no backdrop, no
+  scroll lock, nothing `inert`, so the page beside it stays readable and clickable while it is
+  open; under 40rem it takes the screen, since a phone has no column to spare. It is
+  suppressed on `/playground` and `/p/[id]`, which already show an editor.
 - **Alt+R** (Option+R on macOS), which toggles the dock from anywhere, including the pages
   that hide the launcher. Matched on `event.code === 'KeyR'`, since Option+R on macOS
   produces `®`; Ctrl/Cmd+K was not available, as the theme's search owns it.
@@ -176,7 +177,7 @@ handler mint them. Saving is write-once: an edited snippet is saved as another e
 earlier version stays reachable.
 
 `components/saved-snippets.tsx` renders the list in both places it appears. In the drawer it
-takes an `onOpen`, which loads the snippet into the editor beside it (by changing the
+takes an `onOpen`, which loads the snippet into the editor above it (by changing the
 editor's `key` — `<Playground>` reads `code` when it mounts). On `/playground`, where there
 is no drawer, it has no `onOpen` and each row links to `/p/<id>` instead.
 
