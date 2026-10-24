@@ -5,6 +5,13 @@ import type { ExecutableCode, PlaygroundFragment } from 'kotlin-playground'
 import { DEFAULT_KOTLIN_VERSION, MAX_CODE_BYTES } from '@/lib/kotlin'
 import { putLocalSnippet } from '@/lib/local-snippets'
 import { newId } from '@/lib/snippet-ids'
+import {
+  editorFromHost,
+  formatSignature,
+  isLookupToken,
+  lookupSignatures,
+  type SignatureItem
+} from '@/lib/signature-lookup'
 
 type Props = {
   /** Initial editor contents. */
@@ -42,6 +49,20 @@ type Props = {
  */
 const THEME_DARK = 'darcula'
 const THEME_LIGHT = 'idea'
+
+/**
+ * How long the pointer has to rest on a name before its signature is looked
+ * up. A lookup is a round trip to api.kotlinlang.org — measured at 1.1–1.4s —
+ * so this is about not starting one for every name the pointer crosses.
+ */
+const HOVER_DELAY = 350
+
+/** Enough to see that a name is overloaded without burying the page in it. */
+const MAX_SIGNATURES = 5
+
+/** Matches `max-width` on `.kl-signature`, and the room it needs below. */
+const TOOLTIP_WIDTH = 360
+const TOOLTIP_CLEARANCE = 200
 
 const isDarkDocument = () => document.documentElement.classList.contains('dark')
 
@@ -183,6 +204,126 @@ export function Playground({
   }, [source, theme, version])
 
   /**
+   * What the pointer is resting on: where to draw the tooltip, the name being
+   * asked about, and the answer once it arrives. `items` stays null while the
+   * request is in flight, which is what the tooltip shows as "looking up".
+   */
+  const [hover, setHover] = useState<{
+    x: number
+    y: number
+    /** True when the tooltip has to sit above the pointer to stay on screen. */
+    flip: boolean
+    word: string
+    items: SignatureItem[] | null
+  } | null>(null)
+
+  /**
+   * Signatures on hover, which neither CodeMirror nor kotlin-playground does.
+   * See `lib/signature-lookup.ts` for where the answers come from and what
+   * they are worth. Everything here is about not asking too often: a rest of
+   * HOVER_DELAY before the first request, one request at a time, a cache per
+   * name and position, and the cache emptied whenever the code changes.
+   */
+  useEffect(() => {
+    if (status !== 'ready') return
+    const host = hostRef.current
+    if (!host) return
+    const editor = editorFromHost(host)
+    if (!editor) return
+
+    const cache = new Map<string, SignatureItem[]>()
+    let pending: AbortController | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let shown: string | null = null
+
+    const cancel = () => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+      pending?.abort()
+      pending = null
+    }
+
+    const clear = () => {
+      cancel()
+      shown = null
+      setHover(null)
+    }
+
+    const ask = async (event: MouseEvent) => {
+      const position = editor.coordsChar({ left: event.clientX, top: event.clientY })
+      const token = editor.getTokenAt(position)
+      if (!isLookupToken(token)) {
+        clear()
+        return
+      }
+
+      const key = `${position.line}:${token.end}:${token.string}`
+      if (key === shown) return
+      shown = key
+
+      // Kept inside the window: clamped away from the right edge, and drawn
+      // above the pointer rather than below it near the bottom.
+      const point = {
+        x: Math.min(event.clientX, window.innerWidth - TOOLTIP_WIDTH),
+        y: event.clientY,
+        flip: event.clientY > window.innerHeight - TOOLTIP_CLEARANCE,
+        word: token.string
+      }
+      const cached = cache.get(key)
+      if (cached) {
+        setHover(cached.length > 0 ? { ...point, items: cached } : null)
+        return
+      }
+
+      setHover({ ...point, items: null })
+      pending?.abort()
+      const controller = new AbortController()
+      pending = controller
+      try {
+        const items = await lookupSignatures({
+          code: editor.getValue(),
+          line: position.line,
+          ch: token.end,
+          word: token.string,
+          version,
+          signal: controller.signal
+        })
+        if (controller.signal.aborted) return
+        cache.set(key, items)
+        // Nothing to say is said by saying nothing, rather than by a tooltip
+        // reading "no signature" over every second word.
+        setHover(items.length > 0 ? { ...point, items } : null)
+      } catch {
+        if (!controller.signal.aborted) setHover(null)
+      }
+    }
+
+    const onMove = (event: MouseEvent) => {
+      if (timer !== null) clearTimeout(timer)
+      timer = setTimeout(() => void ask(event), HOVER_DELAY)
+    }
+
+    // Typing, scrolling and leaving all mean the tooltip is about to be wrong.
+    const onChange = () => {
+      cache.clear()
+      clear()
+    }
+
+    host.addEventListener('mousemove', onMove)
+    host.addEventListener('mouseleave', clear)
+    editor.on('change', onChange)
+    editor.on('scroll', clear)
+
+    return () => {
+      cancel()
+      host.removeEventListener('mousemove', onMove)
+      host.removeEventListener('mouseleave', clear)
+      editor.off('change', onChange)
+      editor.off('scroll', clear)
+    }
+  }, [status, version])
+
+  /**
    * Saving keeps the snippet in this browser, in the IndexedDB store that
    * backs the list of saved snippets. There is no link to hand anyone: the
    * site's own store cannot be listed by design (a snippet is reachable only
@@ -242,6 +383,31 @@ export function Playground({
       </div>
 
       <div ref={hostRef} className="kl-playground__host" />
+
+      {hover && (
+        <div
+          className="kl-signature"
+          role="tooltip"
+          data-flip={hover.flip}
+          style={{ left: hover.x, top: hover.y }}
+        >
+          {hover.items === null ? (
+            <span className="kl-signature__pending">Looking up {hover.word}…</span>
+          ) : (
+            hover.items.slice(0, MAX_SIGNATURES).map((item, index) => (
+              <code className="kl-signature__line" key={`${item.text}-${index}`}>
+                {formatSignature(item)}
+                {item.import && <span className="kl-signature__import">needs an import</span>}
+              </code>
+            ))
+          )}
+          {hover.items !== null && hover.items.length > MAX_SIGNATURES && (
+            <span className="kl-signature__more">
+              and {hover.items.length - MAX_SIGNATURES} more overloads
+            </span>
+          )}
+        </div>
+      )}
 
       {status === 'loading' && (
         <p className="kl-playground__note" role="status">

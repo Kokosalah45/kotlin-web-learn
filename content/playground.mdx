@@ -31,6 +31,13 @@ page and survives a reload, for as long as the browser tab is open.
 }`}
 />
 
+Rest the pointer on a name — a function, a variable — and its signature appears:
+`uppercase(): String`. Every overload is listed, because this asks the compiler server what
+could be written there rather than which one the call resolves to, and names that cannot be
+completed where they sit (inside a string, a comment, a keyword) show nothing. The answer is
+a network round trip of roughly a second, so the pointer has to rest for a moment first.
+<kbd>Ctrl</kbd>+<kbd>Space</kbd> offers the same signatures as completions while you type.
+
 ## Where the code runs
 
 The editor is [`kotlin-playground`](https://github.com/JetBrains/kotlin-playground)

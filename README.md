@@ -127,6 +127,40 @@ as JavaScript interpolation, and nothing compiles it in CI.
 snippet. Used where the editor is the point of the page — `/playground`, `/p/[id]` and the
 dock — while inline samples keep growing with their code.
 
+### Signatures on hover
+
+Resting the pointer on a name shows its signature — `uppercase(): String`, or
+`greeting: String` for a local. There is no hover or documentation endpoint on the compiler
+server to ask: it serves `compiler/run`, `compiler/test`, `compiler/translate`,
+`compiler/highlight` and `compiler/complete`, and only the last one knows anything about a
+name. So `lib/signature-lookup.ts` asks for completions at the position just after the
+hovered token and keeps the items whose name matches it exactly:
+
+```
+POST /api/2.4.21/compiler/complete?line=2&ch=15
+{"args":"","confType":"java","files":[{"name":"File.kt","text":"…s.uppercase…","publicId":""}]}
+
+[{"text":"uppercase()","displayText":"uppercase()","tail":"String","icon":"method"},
+ {"text":"uppercase(","displayText":"uppercase(locale: Locale)","tail":"String","icon":"method"},
+ {"text":"kotlin.text.uppercase()","displayText":"uppercase()  (kotlin.text.uppercase)",
+  "tail":"String","import":"kotlin.text.uppercase","icon":"method"}]
+```
+
+Verified against api.kotlinlang.org on 2026-10-24. `text` is the call syntax, so matching has
+to reduce `uppercase()`, `uppercase(` and `kotlin.text.uppercase()` to one name — miss the
+empty-parens form and the overload a reader is most likely hovering disappears. Items needing
+an import are shown last and labelled. The editor instance itself is read off the DOM
+(CodeMirror 5 hangs it on its own wrapper), because the library hands out its fragment rather
+than its editor.
+
+**This is completion, not resolution, and it costs a round trip.** Every overload comes back
+rather than the one the call resolves to, no KDoc prose comes with it, and a name that is not
+completable where it sits — in a string, in a comment, a keyword — has no answer, so nothing
+is shown. Three lookups measured 1.1s, 1.1s and 1.4s, so the pointer has to rest 350ms before
+one starts, only one is in flight at a time, answers are cached per name and position, and the
+cache is dropped whenever the code changes. It will not feel like an IDE, because an IDE is
+not what is answering.
+
 ### Reaching it from anywhere
 
 Two entry points sit outside the content, so running Kotlin is never more than one click

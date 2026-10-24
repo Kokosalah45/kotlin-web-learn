@@ -456,6 +456,51 @@
   }
 }
 
+/* The hover signature. Fixed, because it is placed from pointer coordinates,
+   and above everything in the page except the drawer it can appear inside. */
+.kl-signature {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 360px;
+  padding: 0.45rem 0.6rem;
+  transform: translate(14px, 20px);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 0.4rem;
+  background: rgb(var(--nextra-bg));
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+  pointer-events: none;
+}
+
+.kl-signature[data-flip='true'] {
+  transform: translate(14px, calc(-100% - 12px));
+}
+
+.kl-signature__line {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.kl-signature__import {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-family: inherit;
+  font-size: 0.6875rem;
+  opacity: 0.75;
+}
+
+.kl-signature__pending,
+.kl-signature__more {
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
 /* ---------------------------------------------------------------------------
    The list of saved snippets, in the drawer and on /playground.
    --------------------------------------------------------------------------- */
