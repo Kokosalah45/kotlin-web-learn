@@ -1,17 +1,19 @@
 ---
 title: "return"
-description: "Return types, returning several values, the Nothing type, and local versus non-local return out of a lambda."
+description: "Return types, the Nothing type, and what every form of return inside a lambda ends: non-local return, return@label, anonymous functions, and inline, crossinline and noinline."
 ---
 
 # return
 
-<DocSource docs={["functions", "returns"]} />
+<DocSource docs={["functions", "returns", "inline-functions"]} />
 
 `return` leaves the nearest enclosing function **or anonymous function** — and a lambda is
 neither. That one sentence explains every surprise on this page: a bare `return` inside a
 lambda does not end the lambda, it ends the function the lambda is written in.
 
-Outputs below come from running `examples/functions/return.kt`.
+Outputs below come from running `examples/functions/return.kt` and
+`examples/functions/return-in-lambdas.kt`. The compiler errors are what `kotlinc` 2.4.21
+prints for the snippet above them.
 
 ## Returning more than one value
 
@@ -110,10 +112,50 @@ value was null
 The `null ->` branch type-checks as `String` even though `fail` returns `Nothing`, because
 `Nothing` is a subtype of every type.
 
-## Local return out of a lambda
+## return inside a lambda
 
-To stop *this iteration* of a lambda and carry on, label the return. The label can be
-explicit, or the implicit one named after the function the lambda was passed to:
+This is where the rule at the top of the page starts costing people time. Everything below
+is one keyword meaning different things depending on where it is written.
+
+### The surprise: a bare return in forEach
+
+Read this and predict the output:
+
+```kotlin
+fun printUpToThreeNonLocal() {
+    listOf(1, 2, 3, 4, 5).forEach {
+        if (it == 3) return
+        print(it)
+    }
+    println(" this line is never reached")
+}
+
+printUpToThreeNonLocal()
+println("back in main")
+```
+
+Expected, if `return` ended the lambda: `1245 this line is never reached`, then
+`back in main`. Actual:
+
+```text
+12back in main
+```
+
+Neither `4`, `5` nor the trailing `println` ran. The `return` left
+`printUpToThreeNonLocal()` itself — a **non-local return**. It is not a `continue` and not
+even a `break`; it abandoned the whole function from inside the loop body.
+
+<Callout type="info">
+  **In JavaScript**, `return` inside an `arr.forEach(x => { ... })` callback returns from
+  the callback, which makes it behave like `continue`. Kotlin's bare `return` in the same
+  position does something JavaScript has no syntax for: it returns from the *outer*
+  function. The JavaScript behaviour is spelled `return@forEach`.
+</Callout>
+
+### return@label: continue, not break
+
+Label the return and only the current call of the lambda ends. The label is either written
+by hand or the implicit one named after the function the lambda was passed to:
 
 ```kotlin
 fun printUpToThreeExplicit() {
@@ -138,72 +180,528 @@ fun printUpToThreeImplicit() {
 1245 done with implicit label
 ```
 
-Both skip only the element `3` — that is `continue`, not `break`.
+`4` and `5` still print: ending one call of the lambda just means `forEach` proceeds to the
+next element. There is no form of `return` that breaks out of a `forEach` — for that, see
+[the break and continue section](#break-and-continue-out-of-an-inline-lambda) or use a real
+loop.
 
-## Non-local return
-
-Drop the label and the same code means something completely different:
+An implicit label exists only when the lambda is an argument to a named function. A lambda
+that is not — one being stored, say — has to be labelled by hand:
 
 ```kotlin
-// An unlabelled `return` inside a lambda passed to an inline function
-// leaves the WHOLE function.
-fun printUpToThreeNonLocal() {
-    listOf(1, 2, 3, 4, 5).forEach {
-        if (it == 3) return
-        print(it)
-    }
-    println(" this line is never reached")
-}
+val pending = mutableListOf<() -> Unit>()
 
-printUpToThreeNonLocal()
-println("back in main")
+// `return@plusAssign` does not exist: error: unresolved label.
+pending += greet@{
+    if (userName == null) return@greet
+    println("  queued hello to $userName")
+}
+```
+
+### return@label with a value
+
+The labelled form takes a value, which is how a `map` or `fold` lambda exits early with a
+result:
+
+```kotlin
+val scores = listOf(96, -1, 72)
+println(scores.map { score ->
+    if (score < 0) return@map "n/a"
+    if (score >= 90) "A" else "B"
+})
 ```
 
 ```text
-12back in main
-```
-
-<Callout type="warning">
-  `1245 done...` versus `12` — the only difference in the source is `return@forEach` versus
-  `return`. The unlabelled form abandons `printUpToThreeNonLocal()` entirely, so neither
-  `4`, `5` nor the trailing `println` ever runs.
-</Callout>
-
-This only compiles because `forEach` is an [inline function](/functions/function-types/higher-order-functions):
-the lambda body is copied into the call site, so a `return` there really can leave the
-outer function. Pass the same lambda to a non-inline function and the bare `return` is a
-compile error. Used deliberately it reads very well:
-
-```kotlin
-fun hasZeros(ints: List<Int>): Boolean {
-    ints.forEach {
-        if (it == 0) return true // returns from hasZeros
-    }
-    return false
-}
-
-println(hasZeros(listOf(1, 2, 0, 3)))
-println(hasZeros(listOf(1, 2, 3)))
-```
-
-```text
-true
-false
+[A, n/a, B]
 ```
 
 <Callout type="info">
-  When returning a value at a label, `return@a 1` parses as "return `1` at label `@a`",
-  never as "return the labelled expression `@a 1`".
+  `return@a 1` parses as "return `1` at label `@a`", never as "return the labelled
+  expression `@a 1`".
 </Callout>
 
-An [anonymous function](/functions/function-types/anonymous-functions) is the third option:
-because it is declared with `fun`, an unlabelled `return` inside it returns from the
-anonymous function itself.
+### Bare return in a non-inline lambda is a compile error
+
+The non-local return above only works because `forEach` is
+[inline](/functions/function-types/higher-order-functions): the lambda body is copied into
+the call site, so a `return` there really is inside the calling function. Pass the same
+lambda to a function that is not inline and the compiler refuses:
+
+```kotlin
+fun runLater(block: () -> Unit) { block() }
+
+fun sendReceipts(ids: List<String>) {
+    ids.forEach { id ->
+        runLater {
+            if (id.isEmpty()) return   // error
+            println(id)
+        }
+    }
+}
+```
+
+```text
+error: 'return' is prohibited here.
+```
+
+The reason is the lambda's lifetime. `runLater` stores or forwards it; it may run after
+`sendReceipts` has already returned, and returning from a function that is no longer on the
+stack is not a thing. Kotlin rejects this at compile time rather than quietly doing
+something else.
+
+That lifetime is visible when the lambda really is kept:
+
+```kotlin
+val pending = mutableListOf<() -> Unit>()
+
+fun queueGreeting(userName: String?) {
+    pending += greet@{
+        if (userName == null) return@greet
+        println("  queued hello to $userName")
+    }
+    println("  queueGreeting finished")
+}
+
+queueGreeting("Kodee")
+queueGreeting(null)
+pending.forEach { it() }
+```
+
+```text
+  queueGreeting finished
+  queueGreeting finished
+  queued hello to Kodee
+```
+
+Both calls finish before any lambda body runs. There was never a moment where a `return`
+inside those lambdas could have ended `queueGreeting`.
+
+### Anonymous functions behave like JavaScript functions
+
+An [anonymous function](/functions/function-types/anonymous-functions) is declared with
+`fun`, so it *is* a function, and a bare `return` ends it and nothing else:
+
+```kotlin
+fun anonymousFunctionLoop(values: List<Int>) {
+    values.forEach(fun(value: Int) {
+        if (value == 3) return
+        print(value)
+    })
+    println(" | anonymousFunctionLoop finished")
+}
+
+fun lambdaLoop(values: List<Int>) {
+    values.forEach { value ->
+        if (value == 3) return
+        print(value)
+    }
+    println(" | lambdaLoop finished")
+}
+```
+
+```text
+1245 | anonymousFunctionLoop finished
+12
+```
+
+Same body, same `forEach`, opposite meaning. The anonymous function skipped `3` and carried
+on; the lambda killed the enclosing function, so `lambdaLoop` printed `12` and its own last
+line never ran. If you come from JavaScript and want "`return` ends this callback", an
+anonymous function is the form that behaves the way you expect.
+
+### inline, crossinline, noinline
+
+The three modifiers decide what a `return` in the lambda is allowed to do:
+
+```kotlin
+// inline: the body is copied into the caller, so a bare return is allowed.
+inline fun each(items: List<String>, action: (String) -> Unit) {
+    for (item in items) action(item)
+}
+
+// crossinline: still inlined, but the lambda is used somewhere that a
+// non-local return cannot escape from, so a bare return is rejected.
+inline fun runTwice(crossinline body: () -> Unit) {
+    val task = Runnable { body() }
+    task.run()
+    task.run()
+}
+
+// noinline: a real lambda object, kept or passed on, so a bare return is rejected.
+inline fun <T> remembered(noinline factory: () -> T): () -> T = factory
+```
+
+A bare `return` in a `crossinline` or `noinline` lambda produces the same error as the
+non-inline case:
+
+```text
+error: 'return' is prohibited here.
+```
+
+`crossinline` is for exactly the shape above: the lambda is inlined, but it is invoked from
+inside another object (a `Runnable`, a nested lambda, a callback), and a return out of the
+caller cannot be generated from there. `noinline` is for lambdas that are stored or passed
+on as values — the moment it is a real object with a lifetime, the lifetime argument from
+the previous section applies.
+
+### break and continue out of an inline lambda
+
+Since Kotlin 2.2.0, `break` and `continue` inside a lambda passed to an inline function can
+target an enclosing loop. The docs put it as: non-local usages "are valid in lambda
+expressions used in enclosing inline functions". It is sharper than it looks:
+
+```kotlin
+fun scanGrid(rows: List<List<Int>>) {
+    for (row in rows) {
+        row.forEach { cell ->
+            if (cell < 0) continue
+            if (cell > 99) break
+            print(cell)
+        }
+    }
+    println(" | scanGrid finished")
+}
+
+scanGrid(listOf(listOf(1, -2, 3), listOf(4, 100, 5)))
+```
+
+```text
+14 | scanGrid finished
+```
+
+Expected, if these worked on the `forEach`: `134` then `5`. Actual: `14`. The `continue` at
+`-2` went to the next **row**, not the next cell, so `3` never printed; the `break` at `100`
+ended the `for` loop entirely, so `5` never printed. These jump to the enclosing loop,
+which is the `for` — the `forEach` is not a loop, it is a function call.
+
+### Summary
+
+| Written inside a lambda | Ends | Keeps running |
+| :--- | :--- | :--- |
+| `return` (lambda is inline) | the enclosing function | nothing after the call |
+| `return` (non-inline, `crossinline`, `noinline`) | — compile error | — |
+| `return@forEach` / `return@label` | this one call of the lambda | the rest of the iteration, then the function |
+| `return@map value` | this one call, with a result | the remaining elements |
+| `return` in `fun(x) { … }` | the anonymous function | the loop, then the function |
+| `continue` (inline lambda, 2.2+) | this iteration of the enclosing **loop** | the next iteration of that loop |
+| `break` (inline lambda, 2.2+) | the enclosing **loop** | the function, after the loop |
+
+<Runnable src="functions/return-in-lambdas.kt" />
+
+## Where a label is the right answer
+
+### A guard clause in a callback
+
+The lambda given to a listener is not inline, so a bare `return` will not compile and the
+label is the only early exit:
+
+```kotlin
+submitButton.setOnClickListener {
+    val email = emailField.text.toString()
+    if (email.isBlank()) return@setOnClickListener
+    viewModel.submit(email)
+}
+```
+
+Without the label the alternative is nesting the body in an `if`, which gets worse with
+every guard.
+
+### Coroutine builders
+
+`launch`, `async` and `withContext` take lambdas that are not inlined into the caller, so
+the same rule holds:
+
+```kotlin
+viewModelScope.launch {
+    val user = repository.loadUser(id) ?: return@launch
+    _state.value = State.Ready(user)
+}
+```
+
+<Callout type="warning">
+  The coroutine and Compose snippets on this page are not compiled by the example runner —
+  `kotlinx.coroutines` and Compose are not on its classpath. They are shown for shape. Every
+  `text` output block on this page comes from a file that was compiled and run.
+</Callout>
+
+### Compose, and inline builders generally
+
+This is the most expensive version of the bug, because it compiles and the result is
+missing UI rather than a crash. `Column`, `Row` and `Box` are declared `public inline fun`
+in the AndroidX source, so a bare `return` inside one returns from the composable — skipping
+the rest of the builder *and* everything after it. A plain-Kotlin builder with the same shape shows it exactly:
+
+```kotlin
+inline fun columnOf(content: () -> Unit) {
+    println("<Column>")
+    content()
+    println("</Column>")
+}
+
+fun renderScreenBare(userName: String?) {
+    columnOf {
+        if (userName == null) return
+        println("  Hello, $userName")
+    }
+    println("  footer")
+}
+
+renderScreenBare("Kodee")
+renderScreenBare(null)
+```
+
+```text
+<Column>
+  Hello, Kodee
+</Column>
+  footer
+<Column>
+```
+
+The null case emitted an opening `<Column>` and then nothing at all — not the closing tag
+the builder itself writes, not the footer. In Compose that is a half-rendered screen with no
+error anywhere. The label keeps the builder intact:
+
+```kotlin
+fun renderScreenLabelled(userName: String?) {
+    columnOf {
+        if (userName == null) return@columnOf
+        println("  Hello, $userName")
+    }
+    println("  footer")
+}
+
+renderScreenLabelled(null)
+```
+
+```text
+<Column>
+</Column>
+  footer
+```
+
+The same applies to `return@LaunchedEffect` in a `LaunchedEffect` block.
+
+### A value out of the middle of a transform
+
+Covered above under [`return@label` with a value](#returnlabel-with-a-value): when a `map`
+or `fold` lambda has several exits, the labelled return is the only way to supply a result
+from the middle of it.
+
+### Nested lambdas, where the inner one is a wall
+
+Inside an inline `forEach`, a bare `return` leaves the whole function. Put a non-inline
+lambda between them and that route closes: the inner lambda is a wall you cannot return
+through, and the compiler says so. The fix is to decide what the *inner* lambda should do
+(`return@` its own label) and let the outer code work from the result.
+
+### Nested loops
+
+For loops, the label goes on the loop, not on a lambda, and `break@` leaves the outer one:
+
+```kotlin
+fun findInGrid(rows: List<List<String>>, needle: String): String? {
+    var found: String? = null
+    rows@ for ((y, row) in rows.withIndex()) {
+        for ((x, cell) in row.withIndex()) {
+            if (cell == needle) {
+                found = "$needle at ($x, $y)"
+                break@rows
+            }
+        }
+    }
+    return found
+}
+
+println(findInGrid(listOf(listOf("a", "b"), listOf("c", "x"), listOf("x", "d")), "x"))
+```
+
+```text
+x at (1, 1)
+```
+
+See [Label Loops](/control-flow/loops/label-loops) for the loop-side detail.
+
+## Where a label is a smell
+
+### A for loop instead of forEach plus return@forEach
+
+```kotlin
+// label-heavy
+fun priceOfLabelled(items: List<String>, prices: Map<String, Int>): Int {
+    var total = 0
+    items.forEach { item ->
+        val price = prices[item] ?: return@forEach
+        if (price <= 0) return@forEach
+        total += price
+    }
+    return total
+}
+
+// a loop, where continue means continue and break would mean break
+fun priceOfLoop(items: List<String>, prices: Map<String, Int>): Int {
+    var total = 0
+    for (item in items) {
+        val price = prices[item] ?: continue
+        if (price <= 0) continue
+        total += price
+    }
+    return total
+}
+```
+
+Both answer `12` for the same basket. The loop version can also `break`, which the `forEach`
+version cannot express at all.
+
+### The elvis operator plus return
+
+Because `return` is an expression, the elvis operator turns a null check into one line —
+with the label when inside a lambda, without it in a function:
+
+```kotlin
+val price = prices[item] ?: return@forEach
+val user = repository.load(id) ?: return
+```
+
+### Stdlib functions that already are the early exit
+
+A hand-rolled scan with a non-local return is usually a function that exists:
+
+```kotlin
+// non-local return
+fun hasZeros(ints: List<Int>): Boolean {
+    ints.forEach { if (it == 0) return true }
+    return false
+}
+
+// the same question, asked directly
+fun hasZerosIdiomatic(ints: List<Int>) = ints.any { it == 0 }
+```
+
+`any`, `all`, `none`, `find`, `firstOrNull`, `indexOfFirst` and `takeWhile` all short-circuit
+for you, and say in their name what the loop was for.
+
+### Sequences, when the work per element is real
+
+`any` on a list stops early, but a chain of `map` then `first` does not — the `map` runs over
+everything before `first` looks at anything. `asSequence()` makes the chain lazy:
+
+```kotlin
+var eagerTouched = 0
+val eager = (1..10).map { eagerTouched++; it * it }.first { it > 9 }
+
+var lazyTouched = 0
+val lazy = (1..10).asSequence().map { lazyTouched++; it * it }.first { it > 9 }
+```
+
+```text
+eager: found 16 after 10 evaluations
+lazy:  found 16 after 4 evaluations
+```
+
+Same answer, 4 evaluations instead of 10. See [Sequences](/language-basics/collections/sequences).
+
+### The last expression, or a when, instead of several return@
+
+A lambda's value is its last expression, so branches often need no `return@` at all:
+
+```kotlin
+// three exits
+val label = scores.map { score ->
+    if (score < 0) return@map "n/a"
+    if (score >= 90) return@map "A"
+    return@map "B"
+}
+
+// one expression
+val label = scores.map { score ->
+    when {
+        score < 0 -> "n/a"
+        score >= 90 -> "A"
+        else -> "B"
+    }
+}
+```
+
+### A named function, where a plain return works again
+
+When a lambda body grows guards, pull it out: inside a real function, `return` means what
+it says and needs no label.
+
+```kotlin
+fun priceOf(item: String, prices: Map<String, Int>): Int {
+    val price = prices[item] ?: return 0
+    if (price <= 0) return 0
+    return price
+}
+
+val total = items.sumOf { priceOf(it, prices) }
+```
+
+### mapNotNull, filterNotNull, takeIf
+
+Dropping elements is a filter, not an early exit:
+
+```kotlin
+fun priceOfIdiomatic(items: List<String>, prices: Map<String, Int>): Int =
+    items.mapNotNull { prices[it] }.filter { it > 0 }.sum()
+```
+
+`mapNotNull` replaces "transform, then `return@forEach` on null"; `takeIf` and `takeUnless`
+turn a condition into a nullable value that `?:` can then handle.
+
+## Should I use a label here?
+
+1. **Is the lambda inline?** If not, there is no choice: a bare `return` will not compile,
+   so it is `return@label` or restructuring.
+2. **Is it a loop or a callback?** A callback wants the label. A loop over a collection
+   usually wants a `for` loop, where `continue` and `break` both work and need no label.
+3. **Does the standard library already say this?** `any`, `none`, `firstOrNull`,
+   `mapNotNull`, `takeWhile` — if one of them is the question being asked, the loop and its
+   label both disappear.
+4. **Is the body still small?** Several `return@` in one lambda usually means the body wants
+   to be a named function, where `return` works normally.
+
+## Four ways to return from the wrong place
+
+Each of these compiles.
+
+```kotlin
+// 1. Non-local return in an inline builder: the rest of the UI is skipped.
+Column {
+    if (user == null) return   // returns from the composable, not the Column
+    Text(user.name)
+}
+
+// 2. Bare return in forEach: looks like continue, ends the function.
+fun notify(users: List<User>) {
+    users.forEach {
+        if (it.muted) return   // skips every remaining user, not just this one
+        send(it)
+    }
+    log("done")                // never runs once anyone is muted
+}
+
+// 3. continue in an inline lambda inside a loop: targets the loop, not the element.
+for (row in rows) {
+    row.forEach { if (it < 0) continue }   // next row, not next cell
+}
+
+// 4. return@map where return@forEach was meant, inside nested lambdas: the
+//    implicit label is the innermost function call, which may not be the one intended.
+items.map { item ->
+    item.tags.forEach { tag ->
+        if (tag.isBlank()) return@map item   // ends the map lambda, skipping the rest of the tags
+    }
+    item
+}
+```
 
 ## Related
 
 - [parameters](/functions/standard-functions/parameters) — what goes in
 - [Anonymous Functions](/functions/function-types/anonymous-functions) — `return` with lambda-like syntax
+- [Higher-order Functions](/functions/function-types/higher-order-functions) — what `inline` does
 - [break & continue](/control-flow/loops/break-and-continue) — the other structural jumps
 - [Label Loops](/control-flow/loops/label-loops) — the same label syntax on loops
 
